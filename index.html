@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI 실시간 문제 생성기</title>
+    <title>서울교통공사 AI 모의고사</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       /* Custom font from Google Fonts for better aesthetics */
@@ -21,20 +21,31 @@
           transform: scale(1);
         }
       }
+      @keyframes fade-in {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
       .animate-scale-in {
         animation: scale-in 0.2s ease-out forwards;
       }
+      .animate-fade-in {
+        animation: fade-in 0.3s ease-in-out forwards;
+      }
     </style>
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.21.0",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.0.4",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.21.0",
+    "firebase/": "https://aistudiocdn.com/firebase@^12.3.0/",
     "vite": "https://aistudiocdn.com/vite@^7.1.8",
-    "firebase/": "https://aistudiocdn.com/firebase@^12.3.0/"
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.0.4"
   }
 }
 </script>

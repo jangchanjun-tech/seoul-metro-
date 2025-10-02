@@ -4,6 +4,7 @@ export interface QuizItem {
   options: string[];
   bestAnswers: string[];
   explanation: string;
+  competency: string; // 평가 역량 필드 추가
 }
 
 // Add User type from Firebase for type safety
@@ -14,20 +15,18 @@ export interface User {
   photoURL: string | null;
 }
 
-// This makes Vite's env variables available to TypeScript for type checking.
-// FIX: Moved interfaces into `declare global` to correctly augment the global scope.
+// This makes process.env variables available to TypeScript for type checking.
+// The execution environment is expected to provide these values.
 declare global {
-  interface ImportMetaEnv {
-    readonly VITE_GEMINI_API_KEY: string;
-    readonly VITE_FIREBASE_API_KEY: string;
-    readonly VITE_FIREBASE_AUTH_DOMAIN: string;
-    readonly VITE_FIREBASE_PROJECT_ID: string;
-    readonly VITE_FIREBASE_STORAGE_BUCKET: string;
-    readonly VITE_FIREBASE_MESSAGING_SENDER_ID: string;
-    readonly VITE_FIREBASE_APP_ID: string;
-  }
-
-  interface ImportMeta {
-    readonly env: ImportMetaEnv;
+  namespace NodeJS {
+    interface ProcessEnv {
+      API_KEY: string;
+      FIREBASE_API_KEY: string;
+      FIREBASE_AUTH_DOMAIN: string;
+      FIREBASE_PROJECT_ID: string;
+      FIREBASE_STORAGE_BUCKET: string;
+      FIREBASE_MESSAGING_SENDER_ID: string;
+      FIREBASE_APP_ID: string;
+    }
   }
 }

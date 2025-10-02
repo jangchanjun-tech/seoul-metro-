@@ -4,6 +4,7 @@ export interface QuizItem {
   options: string[];
   bestAnswers: string[];
   explanation: string;
+  competency: string; // 평가 역량 필드 추가
 }
 
 // Add User type from Firebase for type safety

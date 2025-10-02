@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { QuizItem } from '../types';
+import { QuizItem } from './types';
 
 const apiKey = process.env.API_KEY;
 

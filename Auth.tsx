@@ -1,7 +1,7 @@
 import React from 'react';
 import { signInWithPopup, signOut } from 'firebase/auth';
-import { auth, googleProvider } from '../firebase/config';
-import { User } from '../types';
+import { auth, googleProvider } from './firebaseConfig';
+import { User } from './types';
 
 interface AuthProps {
   user: User | null;

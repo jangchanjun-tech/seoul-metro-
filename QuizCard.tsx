@@ -1,5 +1,5 @@
 import React from 'react';
-import { QuizItem } from '../types';
+import { QuizItem } from './types';
 
 interface QuizCardProps {
   quizItem: QuizItem;
