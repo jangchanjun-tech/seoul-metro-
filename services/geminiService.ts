@@ -1,8 +1,14 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { QuizItem } from '../types';
 
-// FIX: Per coding guidelines, the Gemini API key must be read from process.env.API_KEY. This also resolves the TypeScript error.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const apiKey = process.env.API_KEY;
+
+if (!apiKey) {
+  // This error will be caught by the App component and displayed to the user.
+  throw new Error("API_KEY is not set in the environment variables. Please configure it in your deployment settings.");
+}
+
+const ai = new GoogleGenAI({ apiKey });
 
 const quizSchema = {
     type: Type.ARRAY,
@@ -42,12 +48,6 @@ const quizSchema = {
 
 
 export const generateQuiz = async (topic: string): Promise<QuizItem[]> => {
-    // 퀴즈 생성 함수 호출 시점에 API 키 존재 여부를 확인합니다.
-    // FIX: Per coding guidelines, checking for process.env.API_KEY and updating the error message accordingly.
-    if (!process.env.API_KEY) {
-        throw new Error("Gemini API 키(API_KEY)가 설정되지 않았습니다. Vercel 프로젝트 설정에서 환경 변수를 확인하세요.");
-    }
-
     try {
         const prompt = `'${topic}'에 대한 상황판단문제 1개를 생성해줘. 다음 요구사항을 반드시 지켜줘:
 1. 600자에서 800자 사이의 한글 지문을 만들어줘.
@@ -80,10 +80,6 @@ export const generateQuiz = async (topic: string): Promise<QuizItem[]> => {
     } catch (error) {
         console.error("Gemini API 호출 중 오류 발생:", error);
         if (error instanceof Error) {
-            // 이미 설정된 사용자 친화적 메시지는 그대로 전달
-            if (error.message.includes("Gemini API 키")) {
-                throw error;
-            }
             throw new Error(`퀴즈 생성에 실패했습니다: ${error.message}`);
         }
         throw new Error("알 수 없는 오류로 퀴즈 생성에 실패했습니다.");
