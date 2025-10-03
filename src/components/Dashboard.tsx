@@ -81,6 +81,24 @@ const Bar = ({ value, color, label }: { value: number; color: string; label: str
     </div>
 );
 
+const getPerformanceColorStyle = (score: number, min: number, max: number, hasAttempts: boolean): React.CSSProperties => {
+    if (!hasAttempts || max === min) return {};
+    const normalized = (score - min) / (max - min);
+    // Hue: 0 is red, 220 is a nice blue. We go from 220 (blue) down to 0 (red).
+    const hue = 220 - (normalized * 220); 
+    return { 
+        backgroundColor: `hsla(${hue}, 60%, 20%, 0.4)`,
+        borderColor: `hsla(${hue}, 60%, 40%, 0.5)`
+    };
+};
+
+const getPerformanceTextStyle = (score: number, min: number, max: number, hasAttempts: boolean): React.CSSProperties => {
+    if (!hasAttempts || max === min) return {};
+    const normalized = (score - min) / (max - min);
+    const hue = 220 - (normalized * 220);
+    return { color: `hsl(${hue}, 70%, 65%)` };
+};
+
 
 const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
   const [userResults, setUserResults] = useState<QuizResult[]>([]);
@@ -150,9 +168,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
     fetchData();
   }, [user.uid]);
 
-  const performanceIndex = useMemo(() => {
-    return COMPETENCIES.map(competency => {
-        // 1. Latest Score
+  const { performanceIndex, minAverage, maxAverage } = useMemo(() => {
+    const perfData = COMPETENCIES.map(competency => {
         const latestResult = userResults[0];
         let latestScore = 0;
         if (latestResult && latestResult.userAnswers) {
@@ -160,10 +177,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
             latestScore = calculateScore(latestItems, latestResult.userAnswers);
         }
         
-        // 2. User's Average Score
         let totalUserScore = 0;
         let competencyAttempts = 0;
-
         userResults.forEach(result => {
             if (result.userAnswers) {
                 const itemsForCompetency = result.quizData.filter(q => q.competency === competency);
@@ -173,16 +188,28 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
                 }
             }
         });
-
         const userAverage = competencyAttempts > 0 ? totalUserScore / competencyAttempts : 0;
-
 
         return {
             name: competency,
             latest: Math.round(latestScore),
-            userAverage: Math.round(userAverage)
+            userAverage: Math.round(userAverage),
+            hasAttempts: competencyAttempts > 0,
         };
     });
+
+    const scoresWithAttempts = perfData
+        .filter(p => p.hasAttempts)
+        .map(p => p.userAverage);
+
+    if (scoresWithAttempts.length < 2) {
+      return { performanceIndex: perfData, minAverage: 0, maxAverage: 0 };
+    }
+
+    const minAvg = Math.min(...scoresWithAttempts);
+    const maxAvg = Math.max(...scoresWithAttempts);
+
+    return { performanceIndex: perfData, minAverage: minAvg, maxAverage: maxAvg };
   }, [userResults]);
   
   const finalCumulativeAverage = useMemo(() => {
@@ -244,8 +271,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
         <h2 className="text-xl font-semibold text-white mb-4">과목별 성과지수</h2>
          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             {performanceIndex.map(stat => (
-                <div key={stat.name} className="bg-gray-900/50 p-2 rounded-lg">
-                    <h3 className="font-semibold text-center text-indigo-300 mb-2 text-sm h-12 flex items-center justify-center">{stat.name}</h3>
+                <div 
+                  key={stat.name} 
+                  className={`p-2 rounded-lg border transition-all duration-500 ${!stat.hasAttempts || minAverage === maxAverage ? 'bg-gray-900/50 border-gray-700/50' : ''}`}
+                  style={getPerformanceColorStyle(stat.userAverage, minAverage, maxAverage, stat.hasAttempts)}
+                >
+                    <h3 
+                        className={`font-semibold text-center mb-2 text-sm h-12 flex items-center justify-center ${!stat.hasAttempts || minAverage === maxAverage ? 'text-indigo-300' : ''}`}
+                        style={getPerformanceTextStyle(stat.userAverage, minAverage, maxAverage, stat.hasAttempts)}
+                    >
+                        {stat.name}
+                    </h3>
                     <div className="flex justify-around items-end h-24 space-x-1">
                         <Bar value={stat.latest} color="bg-green-500" label="최근 점수" />
                         <Bar value={stat.userAverage} color="bg-blue-500" label="나의 평균" />
