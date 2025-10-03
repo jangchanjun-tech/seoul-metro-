@@ -62,6 +62,16 @@ const ScoreTrendChart: React.FC<{ results: QuizResult[] }> = ({ results }) => {
     );
 };
 
+const Bar = ({ value, color, label }: { value: number; color: string; label: string; }) => (
+    <div className="flex flex-col items-center w-[45%]">
+        <div className="w-full h-full bg-gray-700/50 rounded-t-md flex items-end relative">
+            <div className={`${color} w-full rounded-t-md transition-all duration-500 ease-out`} style={{ height: `${value}%` }} title={`${label}: ${value}점`}></div>
+            <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-sm font-semibold text-white">{value}</span>
+        </div>
+        <p className="text-xs text-gray-400 mt-2 text-center">{label}</p>
+    </div>
+);
+
 
 const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
   const [userResults, setUserResults] = useState<QuizResult[]>([]);
@@ -187,16 +197,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
       );
   }
 
-  const Bar = ({ value, color, label }: { value: number; color: string; label: string; }) => (
-    <div className="flex flex-col items-center w-2/5">
-        <div className="w-full h-40 bg-gray-700/50 rounded-t-md flex items-end relative">
-            <div className={`${color} w-full rounded-t-md`} style={{ height: `${value}%` }} title={`${label}: ${value}점`}></div>
-            <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-sm font-semibold text-white">{value}</span>
-        </div>
-        <p className="text-xs text-gray-400 mt-2 text-center">{label}</p>
-    </div>
-  );
-
   return (
     <div className="space-y-8 animate-fade-in">
       <h1 className="text-3xl font-bold text-center text-indigo-300">마이페이지: 성과 분석 리포트</h1>
@@ -216,11 +216,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
 
       <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700">
         <h2 className="text-xl font-semibold text-white mb-4">과목별 성과지수</h2>
-         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+         <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             {performanceIndex.map(stat => (
-                <div key={stat.name} className="bg-gray-900/50 p-4 rounded-lg">
-                    <h3 className="font-semibold text-center text-indigo-300 mb-3">{stat.name}</h3>
-                    <div className="flex justify-around items-end h-40 space-x-2">
+                <div key={stat.name} className="bg-gray-900/50 p-2 rounded-lg">
+                    <h3 className="font-semibold text-center text-indigo-300 mb-2 text-sm h-12 flex items-center justify-center">{stat.name}</h3>
+                    <div className="flex justify-around items-end h-24 space-x-1">
                         <Bar value={stat.latest} color="bg-green-500" label="최근 점수" />
                         <Bar value={stat.userAverage} color="bg-blue-500" label="나의 평균" />
                     </div>
