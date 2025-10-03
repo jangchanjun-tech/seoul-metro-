@@ -1,4 +1,5 @@
-// FIX: Manual type definitions removed. The reference to "vite/client" in `src/types.ts` now provides the correct types for `import.meta.env`.
+// FIX: Added reference to "vite/client" to provide correct types for `import.meta.env`.
+/// <reference types="vite/client" />
 
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getAuth, setPersistence, browserSessionPersistence, type Auth } from "firebase/auth";

@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, isFirebaseInitialized } from './firebase/config';
 import { isGeminiInitialized, generateSingleQuiz, shuffleArray, getAIVerification } from './services/geminiService';
-import { saveQuizResult } from './services/firebaseService';
-import { QuizItem, User, QuizResult } from './types';
+import { saveQuizResult, getQuestionCountsByCompetency, savePreGeneratedQuestion, ensureUserDocument, incrementUserAttemptCount } from './services/firebaseService';
+import { QuizItem, User, QuizResult, AdminStats } from './types';
 
 // Components
 import HomeScreen from './components/HomeScreen';
@@ -13,13 +13,18 @@ import Auth from './components/Auth';
 import GuideModal from './components/GuideModal';
 import QuizTimer from './components/QuizTimer';
 import Dashboard from './components/Dashboard';
+import AdminPanel from './components/AdminPanel';
 
-type AppState = 'home' | 'loading' | 'quiz' | 'results' | 'dashboard' | 'review';
+type AppState = 'home' | 'loading' | 'quiz' | 'results' | 'dashboard' | 'review' | 'admin';
 
 const COMPETENCIES = [
     '지휘감독능력', '책임감 및 적극성', '관리자로서의 자세 및 청렴도', 
     '경영의식 및 혁신성', '업무의 이해도 및 상황대응력'
 ];
+
+// This should be managed in a secure way in a real production environment
+const ADMIN_UIDS = ['YOUR_ADMIN_UID_HERE', 'ANOTHER_ADMIN_UID_HERE'];
+
 
 const App: React.FC = () => {
     const [appState, setAppState] = useState<AppState>('home');
@@ -42,16 +47,28 @@ const App: React.FC = () => {
     const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const [verificationResults, setVerificationResults] = useState<{[key: string]: string}>({});
     const [isVerifying, setIsVerifying] = useState<{[key: string]: boolean}>({});
-
     const [reviewResult, setReviewResult] = useState<QuizResult | null>(null);
+    
+    // Admin State
+    const [adminStats, setAdminStats] = useState<AdminStats>({});
+    const [isAutoGenerating, setIsAutoGenerating] = useState(false);
+    const autoGenIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
 
     // Authentication Listener
     useEffect(() => {
         if (!isFirebaseInitialized) {
+            setError("로그인/데이터베이스 서비스가 초기화되지 않았습니다. Firebase 환경 변수 설정을 확인해주세요.");
             setIsAuthLoading(false);
             return;
         }
-        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+            if (currentUser) {
+                await ensureUserDocument(currentUser.uid, {
+                    email: currentUser.email,
+                    displayName: currentUser.displayName,
+                });
+            }
             setUser(currentUser);
             setIsAuthLoading(false);
         });
@@ -76,9 +93,18 @@ const App: React.FC = () => {
         };
     }, [appState]);
 
+    // Admin Auto-generation Cleanup
+    useEffect(() => {
+        return () => {
+            if (autoGenIntervalRef.current) {
+                clearInterval(autoGenIntervalRef.current);
+            }
+        };
+    }, []);
+
     const startQuiz = useCallback(async () => {
         if (!isGeminiInitialized) {
-            setError("AI 서비스가 초기화되지 않았습니다. API 키 설정을 확인해주세요.");
+            setError("AI 서비스가 초기화되지 않았습니다. 만약 Vercel 등에 배포하셨다면, 프로젝트 설정에서 API_KEY 환경 변수를 추가해야 합니다.");
             return;
         }
         setIsLoading(true);
@@ -86,7 +112,6 @@ const App: React.FC = () => {
         setAppState('loading');
 
         try {
-            // Generate 2 questions for each competency
             const promises = COMPETENCIES.flatMap(comp => [
                 generateSingleQuiz(comp),
                 generateSingleQuiz(comp)
@@ -95,7 +120,6 @@ const App: React.FC = () => {
             const results = await Promise.all(promises);
             setQuizData(shuffleArray(results));
             
-            // Reset state for new quiz
             setUserAnswers({});
             setCurrentQuestionIndex(0);
             setScore(0);
@@ -118,110 +142,111 @@ const App: React.FC = () => {
         const currentAnswers = userAnswers[currentQuestionId] || [];
 
         if (currentAnswers.includes(answer)) {
-            setUserAnswers({
-                ...userAnswers,
-                [currentQuestionId]: currentAnswers.filter(a => a !== answer),
-            });
+            setUserAnswers({ ...userAnswers, [currentQuestionId]: currentAnswers.filter(a => a !== answer) });
         } else if (currentAnswers.length < 2) {
-            setUserAnswers({
-                ...userAnswers,
-                [currentQuestionId]: [...currentAnswers, answer],
-            });
+            setUserAnswers({ ...userAnswers, [currentQuestionId]: [...currentAnswers, answer] });
         }
     };
 
-    const goToNextQuestion = () => {
-        if (currentQuestionIndex < quizData.length - 1) {
-            setCurrentQuestionIndex(currentQuestionIndex + 1);
-        }
-    };
-    
-    const goToPreviousQuestion = () => {
-        if (currentQuestionIndex > 0) {
-            setCurrentQuestionIndex(currentQuestionIndex - 1);
-        }
-    };
+    const goToNextQuestion = () => currentQuestionIndex < quizData.length - 1 && setCurrentQuestionIndex(currentQuestionIndex + 1);
+    const goToPreviousQuestion = () => currentQuestionIndex > 0 && setCurrentQuestionIndex(currentQuestionIndex - 1);
 
     const finishQuiz = useCallback(async () => {
-        if (timerIntervalRef.current) {
-            clearInterval(timerIntervalRef.current);
-        }
+        if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
         
         let correctCount = 0;
-        let finalScore = 0;
         const competencyScores: { [key: string]: { correct: number; total: number } } = {};
-
-        COMPETENCIES.forEach(c => {
-            competencyScores[c] = { correct: 0, total: 0 };
-        });
+        COMPETENCIES.forEach(c => { competencyScores[c] = { correct: 0, total: 0 }; });
 
         quizData.forEach(item => {
             const userAns = userAnswers[item.id] || [];
             const isCorrect = userAns.length === 2 && userAns.every(ans => item.bestAnswers.includes(ans));
-            
             competencyScores[item.competency].total += 1;
-            
             if (isCorrect) {
                 correctCount++;
                 competencyScores[item.competency].correct += 1;
             }
         });
         
-        finalScore = Math.round((correctCount / quizData.length) * 100);
+        const finalScore = Math.round((correctCount / quizData.length) * 100);
         setTotalCorrect(correctCount);
         setScore(finalScore);
         setAppState('results');
         
-        // Post-hoc AI verification
         quizData.forEach(item => {
              if (!verificationResults[item.id]) {
                 setIsVerifying(prev => ({ ...prev, [item.id]: true }));
                 getAIVerification(item).then(result => {
                     setVerificationResults(prev => ({...prev, [item.id]: result}));
-                }).finally(() => {
-                    setIsVerifying(prev => ({ ...prev, [item.id]: false }));
-                });
+                }).finally(() => setIsVerifying(prev => ({ ...prev, [item.id]: false })));
             }
         });
         
         if (user && isFirebaseInitialized) {
-            const resultToSave: Omit<QuizResult, 'id'> = {
-                userId: user.uid,
-                quizData,
-                userAnswers,
-                score: finalScore,
-                totalCorrect: correctCount,
-                totalQuestions: quizData.length,
-                elapsedTime,
-                submittedAt: new Date(),
-                competencyScores,
-            };
-            try {
-                await saveQuizResult(resultToSave);
-            } catch (error) {
-                console.error("결과 저장 실패:", error);
-            }
+            await saveQuizResult({
+                userId: user.uid, quizData, userAnswers, score: finalScore,
+                totalCorrect: correctCount, totalQuestions: quizData.length, elapsedTime,
+                submittedAt: new Date(), competencyScores,
+            });
+            await incrementUserAttemptCount(user.uid);
         }
     }, [quizData, userAnswers, elapsedTime, user, verificationResults]);
 
-    const handleGoToDashboard = () => {
-        if (user) {
-            setAppState('dashboard');
-        } else {
-            setIsAuthModalOpen(true);
-        }
+    const handleGoToDashboard = () => user ? setAppState('dashboard') : setIsAuthModalOpen(true);
+    const handleReview = (result: QuizResult) => { setReviewResult(result); setCurrentQuestionIndex(0); setAppState('review'); };
+    const handleGoToAdmin = async () => { await fetchAdminStats(); setAppState('admin'); };
+
+    const fetchAdminStats = async () => {
+        const stats = await getQuestionCountsByCompetency(COMPETENCIES);
+        setAdminStats(stats);
     };
 
-    const handleReview = (result: QuizResult) => {
-        setReviewResult(result);
-        setCurrentQuestionIndex(0);
-        setAppState('review');
+    const handleGenerateSingleAdmin = async (competency: string) => {
+        try {
+            const newItem = await generateSingleQuiz(competency);
+            await savePreGeneratedQuestion(newItem);
+            await fetchAdminStats(); // Refresh stats
+        } catch (error) {
+            console.error("Admin generation failed:", error);
+            setError("AI 문제 생성에 실패했습니다.");
+        }
+    };
+    
+    const autoGenerateQuestion = useCallback(async () => {
+        const currentStats = await getQuestionCountsByCompetency(COMPETENCIES);
+        setAdminStats(currentStats);
+
+        let minCount = Infinity;
+        let targetCompetency = '';
+        
+        COMPETENCIES.forEach(comp => {
+            const count = currentStats[comp] || 0;
+            if (count < minCount) {
+                minCount = count;
+                targetCompetency = comp;
+            }
+        });
+
+        if (targetCompetency) {
+            console.log(`Auto-generating for least populated competency: ${targetCompetency} (${minCount} questions)`);
+            await handleGenerateSingleAdmin(targetCompetency);
+        }
+    }, []);
+    
+    const handleToggleAutoGeneration = () => {
+        if (isAutoGenerating) {
+            if (autoGenIntervalRef.current) clearInterval(autoGenIntervalRef.current);
+            setIsAutoGenerating(false);
+        } else {
+            setIsAutoGenerating(true);
+            autoGenerateQuestion(); // Run immediately
+            autoGenIntervalRef.current = setInterval(autoGenerateQuestion, 60000); // every 60 seconds
+        }
     };
 
     const renderContent = () => {
         switch (appState) {
-            case 'loading':
-                return <Loader />;
+            case 'loading': return <Loader />;
             case 'quiz':
             case 'results': {
                 if (quizData.length === 0) return <HomeScreen onStartQuiz={startQuiz} isLoading={isLoading} />;
@@ -229,16 +254,7 @@ const App: React.FC = () => {
                 return (
                     <div className="w-full max-w-4xl mx-auto space-y-6">
                         {appState === 'quiz' && <QuizTimer elapsedTime={elapsedTime} />}
-                        <QuizCard
-                            key={currentQuestion.id}
-                            quizItem={currentQuestion}
-                            questionIndex={currentQuestionIndex}
-                            userAnswers={userAnswers[currentQuestion.id] || []}
-                            showResults={appState === 'results'}
-                            onToggleAnswer={handleToggleAnswer}
-                            isVerifying={isVerifying[currentQuestion.id] || false}
-                            verificationResult={verificationResults[currentQuestion.id]}
-                        />
+                        <QuizCard key={currentQuestion.id} quizItem={currentQuestion} questionIndex={currentQuestionIndex} userAnswers={userAnswers[currentQuestion.id] || []} showResults={appState === 'results'} onToggleAnswer={handleToggleAnswer} isVerifying={isVerifying[currentQuestion.id] || false} verificationResult={verificationResults[currentQuestion.id]} />
                         <div className="flex justify-between items-center mt-6 px-2">
                            <button onClick={goToPreviousQuestion} disabled={currentQuestionIndex === 0} className="bg-gray-700 text-white font-bold py-2 px-6 rounded-lg hover:bg-gray-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed">이전</button>
                            <span className="text-white font-semibold">{currentQuestionIndex + 1} / {quizData.length}</span>
@@ -253,32 +269,21 @@ const App: React.FC = () => {
                                 <h2 className="text-2xl font-bold text-indigo-300 mb-2">최종 결과</h2>
                                 <p className="text-4xl font-extrabold text-white mb-4">{score}<span className="text-xl font-normal text-gray-400"> / 100</span></p>
                                 <p className="text-gray-300">{`총 ${quizData.length}문제 중 ${totalCorrect}문제를 맞혔습니다. (소요 시간: ${Math.floor(elapsedTime / 60)}분 ${elapsedTime % 60}초)`}</p>
-                                <div className="mt-6 flex justify-center gap-4">
-                                    <button onClick={() => setAppState('home')} className="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all">홈으로</button>
-                                </div>
+                                <div className="mt-6 flex justify-center gap-4"><button onClick={() => setAppState('home')} className="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all">홈으로</button></div>
                             </div>
                         )}
                     </div>
                 );
             }
-            case 'dashboard':
-                return <Dashboard user={user!} onReview={handleReview} onBack={() => setAppState('home')} />;
+            case 'dashboard': return <Dashboard user={user!} onReview={handleReview} onBack={() => setAppState('home')} />;
+            case 'admin': return <AdminPanel stats={adminStats} isAutoGenerating={isAutoGenerating} onGenerate={handleGenerateSingleAdmin} onToggleAuto={handleToggleAutoGeneration} onBack={() => setAppState('home')} />;
             case 'review': {
                  if (!reviewResult) return <p>리뷰할 데이터를 찾을 수 없습니다.</p>;
                  const currentQuestion = reviewResult.quizData[currentQuestionIndex];
                  return (
                     <div className="w-full max-w-4xl mx-auto space-y-6">
                         <h2 className="text-2xl font-bold text-center text-indigo-300">결과 다시보기 ({new Date(reviewResult.submittedAt).toLocaleString()})</h2>
-                        <QuizCard
-                            key={currentQuestion.id}
-                            quizItem={currentQuestion}
-                            questionIndex={currentQuestionIndex}
-                            userAnswers={reviewResult.userAnswers[currentQuestion.id] || []}
-                            showResults={true}
-                            onToggleAnswer={() => {}} // no-op
-                            isVerifying={false}
-                            isReviewMode={true}
-                        />
+                        <QuizCard key={currentQuestion.id} quizItem={currentQuestion} questionIndex={currentQuestionIndex} userAnswers={reviewResult.userAnswers[currentQuestion.id] || []} showResults={true} onToggleAnswer={() => {}} isVerifying={false} isReviewMode={true}/>
                          <div className="flex justify-between items-center mt-6 px-2">
                            <button onClick={goToPreviousQuestion} disabled={currentQuestionIndex === 0} className="bg-gray-700 text-white font-bold py-2 px-6 rounded-lg hover:bg-gray-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed">이전</button>
                            <span className="text-white font-semibold">{currentQuestionIndex + 1} / {reviewResult.quizData.length}</span>
@@ -291,9 +296,7 @@ const App: React.FC = () => {
                     </div>
                  );
             }
-            case 'home':
-            default:
-                return <HomeScreen onStartQuiz={startQuiz} isLoading={isLoading} />;
+            case 'home': default: return <HomeScreen onStartQuiz={startQuiz} isLoading={isLoading} />;
         }
     };
     
@@ -304,14 +307,7 @@ const App: React.FC = () => {
     return (
         <div className="min-h-screen bg-gray-900 text-white font-sans selection:bg-indigo-500/30">
             <div className="absolute top-0 left-0 w-full h-full bg-grid-pattern opacity-10" style={{'--grid-color': 'rgba(129, 140, 248, 0.2)', '--grid-size': '40px'} as React.CSSProperties}></div>
-            <style>
-            {`
-            .bg-grid-pattern {
-                background-image: linear-gradient(var(--grid-color) 1px, transparent 1px), linear-gradient(to right, var(--grid-color) 1px, transparent 1px);
-                background-size: var(--grid-size) var(--grid-size);
-            }
-            `}
-            </style>
+            <style>{`.bg-grid-pattern { background-image: linear-gradient(var(--grid-color) 1px, transparent 1px), linear-gradient(to right, var(--grid-color) 1px, transparent 1px); background-size: var(--grid-size) var(--grid-size); }`}</style>
             <div className="absolute inset-0 bg-gradient-to-b from-gray-900 via-transparent to-gray-900"></div>
 
             <header className="relative z-20 p-4 sm:p-6 flex justify-between items-center max-w-7xl mx-auto">
@@ -322,6 +318,7 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-2 sm:gap-4">
                     <button onClick={() => setIsGuideModalOpen(true)} className="text-gray-300 hover:text-white font-medium py-2 px-3 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base">이용안내</button>
                     {isFirebaseInitialized && user && <button onClick={handleGoToDashboard} className="text-gray-300 hover:text-white font-medium py-2 px-3 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base">나의 성과분석</button>}
+                    {isFirebaseInitialized && user && ADMIN_UIDS.includes(user.uid) && <button onClick={handleGoToAdmin} className="text-gray-300 hover:text-white font-medium py-2 px-3 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base">관리자</button>}
                     {isFirebaseInitialized && <Auth user={user} isModalOpen={isAuthModalOpen} onToggleModal={setIsAuthModalOpen} />}
                 </div>
             </header>
