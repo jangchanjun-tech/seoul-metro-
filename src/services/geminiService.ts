@@ -96,7 +96,8 @@ export const generateSingleQuiz = async (competency: string): Promise<QuizItem> 
         });
 
         const jsonText = response.text.trim();
-        return JSON.parse(jsonText) as QuizItem;
+        const quizData = JSON.parse(jsonText) as Omit<QuizItem, 'id'>;
+        return { ...quizData, id: crypto.randomUUID() };
 
     } catch (error) {
         console.error(`'${competency}' 역량 문제 생성 중 오류:`, error);
@@ -163,8 +164,8 @@ export const generateCompetencyAnalysis = async (userResults: QuizResult[]): Pro
 
     // 데이터 요약 및 가공
     const summary = userResults.flatMap(result =>
-        result.quizData.map((item, index) => {
-            const userAnswers = result.userAnswers ? result.userAnswers[index] : [];
+        result.quizData.map((item) => {
+            const userAnswers = result.userAnswers ? result.userAnswers[item.id] : [];
             if (!userAnswers) return null;
             return {
                 competency: item.competency,

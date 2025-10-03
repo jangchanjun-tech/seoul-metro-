@@ -53,7 +53,6 @@ const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
         return () => clearInterval(interval);
     }, [fetchStats]);
 
-    // FIX: Reordered functions to fix `useCallback` dependency cycle.
     const stopGeneration = useCallback(() => {
         addLog("모든 생성 프로세스 중단을 요청합니다...");
         setIsGenerating(false);
@@ -150,13 +149,13 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isGeneratingMore, setIsGeneratingMore] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [userAnswers, setUserAnswers] = useState<Record<number, string[]>>({});
+  const [userAnswers, setUserAnswers] = useState<Record<string, string[]>>({});
   const [showResults, setShowResults] = useState<boolean>(false);
   const [user, setUser] = useState<User | null>(null);
   const [isGuideModalOpen, setIsGuideModalOpen] = useState<boolean>(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [appState, setAppState] = useState<AppState>('home');
-  const [verificationResults, setVerificationResults] = useState<Record<number, string>>({});
+  const [verificationResults, setVerificationResults] = useState<Record<string, string>>({});
   const [isVerifying, setIsVerifying] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
   
@@ -209,20 +208,17 @@ const App: React.FC = () => {
 
         // --- Phase 1: Fetch from Bank (Fast Path) ---
         console.log("1단계: 문제 은행에서 5문제 즉시 로딩 시작...");
-        const bankQuestions = await fetchInitialBankSet(COMPETENCIES, seenIds);
-        // FIX: Do not shuffle the main question list to maintain a stable order.
+        const bankQuestions = await fetchInitialBankSet(COMPETENCIES.slice(0, 5), seenIds);
         setQuizData(bankQuestions.map(q => ({...q, options: shuffleArray(q.options)})));
-        setIsLoading(false); // Hide main loader and show initial questions
+        setIsLoading(false); 
         console.log(`1단계 완료: ${bankQuestions.length}개의 문제를 즉시 표시했습니다.`);
 
         // --- Phase 2: Generate from AI (Slow Path, in background) ---
         setIsGeneratingMore(true);
         console.log("2단계: AI로 나머지 5문제 백라운드 생성 시작...");
 
-        const aiPromises = COMPETENCIES.map(competency => 
+        const aiPromises = COMPETENCIES.slice(0, 5).map(competency => 
             generateSingleQuiz(competency).then(newQuestion => {
-                // "stream" in the new question by appending it to the list
-                // FIX: Do not shuffle the array. Just append the new question to maintain stable order.
                 setQuizData(prevData => [...prevData, {...newQuestion, options: shuffleArray(newQuestion.options)}]);
                 return newQuestion;
             })
@@ -234,14 +230,7 @@ const App: React.FC = () => {
         // --- Phase 3: Save new questions to bank ---
         if (newQuestionsFromAI.length > 0) {
             console.log("3단계: 새로 생성된 문제를 문제 은행에 저장합니다...");
-            const savedQuestions = await saveNewQuestions(newQuestionsFromAI);
-            // Update state with questions that now have a Firestore ID, preserving order
-            setQuizData(prevData => {
-                const dataMap = new Map(prevData.map(q => [q.question, q]));
-                savedQuestions.forEach(sq => dataMap.set(sq.question, sq));
-                // FIX: Do not shuffle the array after updating IDs to maintain stable order.
-                return Array.from(dataMap.values());
-            });
+            await saveNewQuestions(newQuestionsFromAI);
             console.log("3단계 완료: 저장이 완료되었습니다.");
         }
         
@@ -252,20 +241,20 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const handleToggleAnswer = (questionIndex: number, answer: string) => {
+  const handleToggleAnswer = (questionId: string, answer: string) => {
     setUserAnswers(prev => {
-      const currentAnswers = prev[questionIndex] || [];
+      const currentAnswers = prev[questionId] || [];
       const newAnswers = currentAnswers.includes(answer) ? currentAnswers.filter(a => a !== answer) : [...currentAnswers, answer];
       if (newAnswers.length > 2) return prev;
-      return { ...prev, [questionIndex]: newAnswers };
+      return { ...prev, [questionId]: newAnswers };
     });
   };
 
   const calculateScore = useCallback(() => {
     let totalPoints = 0;
     const maxPointsPerQuestion = 6; // best(3) + best(3)
-    quizData.forEach((item, index) => {
-        const userSelection = userAnswers[index] || [];
+    quizData.forEach((item) => {
+        const userSelection = userAnswers[item.id] || [];
         userSelection.forEach(answer => {
             if (item.bestAnswers.includes(answer)) totalPoints += 3;
             else if (item.secondBestAnswers.includes(answer)) totalPoints += 2;
@@ -292,16 +281,16 @@ const App: React.FC = () => {
     setIsVerifying(true);
     setVerificationResults({});
     try {
-        const verificationPromises = quizData.map((item, index) =>
+        const verificationPromises = quizData.map((item) =>
             getAIVerification(item).then(result => {
-                setVerificationResults(prev => ({ ...prev, [index]: result }));
+                setVerificationResults(prev => ({ ...prev, [item.id]: result }));
             })
         );
         await Promise.all(verificationPromises);
     } catch(e) {
         console.error("AI 검증 중 오류 발생:", e);
         const errorMessage = "AI 검증 중 오류가 발생했습니다.";
-        setVerificationResults(quizData.reduce((acc, _, index) => ({...acc, [index]: errorMessage}), {} as Record<number, string>));
+        setVerificationResults(quizData.reduce((acc, item) => ({...acc, [item.id]: errorMessage}), {} as Record<string, string>));
     } finally {
         setIsVerifying(false);
     }
@@ -313,7 +302,7 @@ const App: React.FC = () => {
       setError(null);
   };
   
-  const isQuizFinished = quizData.length === 10 && quizData.every((_, index) => (userAnswers[index] || []).length === 2);
+  const isQuizFinished = quizData.length === 10 && quizData.every((item) => (userAnswers[item.id] || []).length === 2);
 
   const renderContent = () => {
     if (appState === 'admin') {
@@ -340,14 +329,14 @@ const App: React.FC = () => {
       <div className="space-y-4">
         {quizData.map((item, index) => (
           <QuizCard
-            key={item.id || item.question} // Use question as a fallback key
+            key={item.id}
             quizItem={item}
             questionIndex={index}
-            userAnswers={userAnswers[index] || []}
+            userAnswers={userAnswers[item.id] || []}
             showResults={showResults}
-            onToggleAnswer={handleToggleAnswer}
+            onToggleAnswer={(answer) => handleToggleAnswer(item.id, answer)}
             isVerifying={isVerifying}
-            verificationResult={verificationResults[index]}
+            verificationResult={verificationResults[item.id]}
           />
         ))}
         {isGeneratingMore && <Loader message="AI가 추가 문제를 생성하고 있습니다..." />}

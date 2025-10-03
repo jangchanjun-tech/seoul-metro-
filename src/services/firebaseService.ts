@@ -4,7 +4,7 @@ import { QuizItem, User, QuizResult, SystemStats, OverallPerformanceStats, Analy
 
 const COMPETENCIES = ["지휘감독능력", "책임감 및 적극성", "관리자로서의 자세 및 청렴도", "경영의식 및 혁신성", "업무의 이해도 및 상황대응력"];
 
-export const saveQuizResult = async (user: User, topic: string, quizData: QuizItem[], userAnswers: Record<number, string[]>, score: number) => {
+export const saveQuizResult = async (user: User, topic: string, quizData: QuizItem[], userAnswers: Record<string, string[]>, score: number) => {
     try {
         const statsRef = doc(db, "performanceStats", "summary");
         const resultRef = doc(collection(db, "quizResults"));
@@ -24,7 +24,7 @@ export const saveQuizResult = async (user: User, topic: string, quizData: QuizIt
             
             // 2. Calculate scores for the new result by competency
             const competencyScores: { [key: string]: { score: number, count: number } } = {};
-            quizData.forEach((item, index) => {
+            quizData.forEach((item) => {
                 const competency = item.competency;
                 if (!competencyScores[competency]) {
                     competencyScores[competency] = { score: 0, count: 0 };
@@ -32,7 +32,7 @@ export const saveQuizResult = async (user: User, topic: string, quizData: QuizIt
                 
                 let totalPoints = 0;
                 const maxPointsPerQuestion = 6;
-                const userSelection = userAnswers[index] || [];
+                const userSelection = userAnswers[item.id] || [];
                 userSelection.forEach(answer => {
                     if (item.bestAnswers.includes(answer)) totalPoints += 3;
                     else if (item.secondBestAnswers.includes(answer)) totalPoints += 2;
@@ -162,28 +162,27 @@ export const fetchInitialBankSet = async (competencies: string[], seenIds: Set<s
 };
 
 
-export const saveNewQuestions = async (questions: Omit<QuizItem, 'id'>[]): Promise<QuizItem[]> => {
+export const saveNewQuestions = async (questions: QuizItem[]): Promise<void> => {
     const batch = writeBatch(db);
-    const savedQuestions: QuizItem[] = [];
     const statsUpdate: { [key: string]: any } = { total: increment(questions.length) };
 
     questions.forEach(question => {
+        // Let Firestore generate a new ID, but we save the object which might have a client-side ID.
+        // This is fine, the client-side ID won't be saved unless it's a field in the object.
+        // We remove the client-side ID before saving to avoid confusion.
+        const { id, ...questionData } = question;
         const docRef = doc(collection(db, "preGeneratedQuestions", question.competency, "questions"));
-        batch.set(docRef, question);
-        savedQuestions.push({ ...question, id: docRef.id });
+        batch.set(docRef, questionData);
 
         const competencyKey = question.competency as keyof SystemStats;
-        if (!statsUpdate[competencyKey]) statsUpdate[competencyKey] = increment(0);
-        statsUpdate[competencyKey] = increment(1);
+        statsUpdate[competencyKey] = (statsUpdate[competencyKey] || increment(0))._toFieldTransform(increment(1));
     });
 
     const statsRef = doc(db, 'systemStats', 'counts');
-    // FIX: Using set with merge option to prevent overwriting if doc doesn't exist
     batch.set(statsRef, statsUpdate, { merge: true });
 
     await batch.commit();
     console.log(`${questions.length}개의 새 문제가 은행에 저장되고 통계가 업데이트되었습니다.`);
-    return savedQuestions;
 };
 
 export const updateSeenQuestions = async (userId: string, questionIds: string[]) => {
@@ -222,26 +221,13 @@ export const saveSingleQuestionToBank = async (question: QuizItem): Promise<void
     statsUpdate[competencyKey] = increment(1);
 
     const batch = writeBatch(db);
-
+    
+    const { id, ...questionData } = question;
     const questionRef = doc(collection(db, 'preGeneratedQuestions', question.competency, 'questions'));
-    batch.set(questionRef, question);
+    batch.set(questionRef, questionData);
 
     const statsRef = doc(db, 'systemStats', 'counts');
-    // Ensure the stats doc exists before updating
-    const statsDoc = await getDoc(statsRef);
-    if(statsDoc.exists()){
-        batch.update(statsRef, statsUpdate);
-    } else {
-        batch.set(statsRef, {
-            total: 1,
-            지휘감독능력: competencyKey === '지휘감독능력' ? 1 : 0,
-            '책임감 및 적극성': competencyKey === '책임감 및 적극성' ? 1 : 0,
-            '관리자로서의 자세 및 청렴도': competencyKey === '관리자로서의 자세 및 청렴도' ? 1 : 0,
-            '경영의식 및 혁신성': competencyKey === '경영의식 및 혁신성' ? 1 : 0,
-            '업무의 이해도 및 상황대응력': competencyKey === '업무의 이해도 및 상황대응력' ? 1 : 0,
-        });
-    }
-
+    batch.set(statsRef, statsUpdate, { merge: true });
 
     await batch.commit();
 };

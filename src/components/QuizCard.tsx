@@ -6,7 +6,7 @@ interface QuizCardProps {
   questionIndex: number;
   userAnswers: string[];
   showResults: boolean;
-  onToggleAnswer: (questionIndex: number, answer: string) => void;
+  onToggleAnswer: (answer: string) => void;
   isVerifying: boolean;
   verificationResult?: string;
 }
@@ -82,7 +82,7 @@ const QuizCard: React.FC<QuizCardProps> = ({ quizItem, questionIndex, userAnswer
            return (
             <div key={index} className="flex items-center gap-3">
               <button
-                onClick={() => onToggleAnswer(questionIndex, option)}
+                onClick={() => onToggleAnswer(option)}
                 disabled={showResults || (!isSelected && userAnswers.length >= 2)}
                 className={`flex-grow text-left p-4 rounded-lg transition-all duration-300 transform hover:scale-105 disabled:cursor-not-allowed disabled:transform-none disabled:opacity-70 flex justify-between items-center ${getOptionClass(option)}`}
               >

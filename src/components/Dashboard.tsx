@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { User, QuizResult, CompetencyAnalysis, AnalysisCache } from '../types';
+import { User, QuizResult, CompetencyAnalysis, AnalysisCache, QuizItem } from '../types';
 import { getUserQuizResults, getAnalysisCache, saveAnalysisCache } from '../services/firebaseService';
 import { generateCompetencyAnalysis } from '../services/geminiService';
 import Loader from './Loader';
@@ -13,15 +13,15 @@ interface DashboardProps {
 const COMPETENCIES = ["지휘감독능력", "책임감 및 적극성", "관리자로서의 자세 및 청렴도", "경영의식 및 혁신성", "업무의 이해도 및 상황대응력"];
 
 // Helper to calculate score for a set of questions and answers
-const calculateScore = (items: any[], answers: Record<number, string[]> | undefined): number => {
+// FIX: Imported the 'QuizItem' type from '../types' to resolve the 'Cannot find name' error.
+const calculateScore = (items: QuizItem[], answers: Record<string, string[]> | undefined): number => {
     if (!answers || items.length === 0) return 0;
     
     let totalPoints = 0;
     const maxPointsPerQuestion = 6;
 
-    items.forEach((item, index) => {
-        // This logic handles both array-indexed answers (from older data) and id-indexed answers
-        const userSelection = answers?.[item.id] || answers?.[index] || [];
+    items.forEach((item) => {
+        const userSelection = answers[item.id] || [];
         userSelection.forEach(answer => {
             if (item.bestAnswers.includes(answer)) totalPoints += 3;
             else if (item.secondBestAnswers.includes(answer)) totalPoints += 2;
@@ -138,15 +138,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
         let latestScore = 0;
         if (latestResult && latestResult.userAnswers) {
             const latestItems = latestResult.quizData.filter(q => q.competency === competency);
-            const mappedAnswers: Record<string, string[]> = {};
-            latestItems.forEach(item => {
-                const originalIndex = latestResult.quizData.findIndex(q => q.id === item.id || q.question === item.question);
-                if(originalIndex > -1 && latestResult.userAnswers?.[originalIndex]) {
-                    const key = item.id || originalIndex.toString();
-                    mappedAnswers[key] = latestResult.userAnswers[originalIndex];
-                }
-            });
-            latestScore = calculateScore(latestItems, mappedAnswers);
+            latestScore = calculateScore(latestItems, latestResult.userAnswers);
         }
         
         // 2. User's Average Score
@@ -157,15 +149,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
             if (result.userAnswers) {
                 const itemsForCompetency = result.quizData.filter(q => q.competency === competency);
                 if (itemsForCompetency.length > 0) {
-                     const mappedAnswers: Record<string, string[]> = {};
-                     itemsForCompetency.forEach(item => {
-                        const originalIndex = result.quizData.findIndex(q => q.id === item.id || q.question === item.question);
-                         if(originalIndex > -1 && result.userAnswers?.[originalIndex]) {
-                            const key = item.id || originalIndex.toString();
-                            mappedAnswers[key] = result.userAnswers[originalIndex];
-                        }
-                    });
-                    totalUserScore += calculateScore(itemsForCompetency, mappedAnswers);
+                    totalUserScore += calculateScore(itemsForCompetency, result.userAnswers);
                     competencyAttempts++;
                 }
             }

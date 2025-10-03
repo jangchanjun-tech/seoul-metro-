@@ -3,7 +3,7 @@
 import { Timestamp } from "firebase/firestore";
 
 export interface QuizItem {
-  id?: string; // Firestore document ID
+  id: string; // Firestore document ID or client-side UUID
   passage: string;
   question: string;
   options: string[];
@@ -28,8 +28,8 @@ export interface QuizResult {
   userName: string;
   topic: string;
   quizData: QuizItem[];
-  // 사용자의 답변을 저장하여 역량별 점수 재계산이 가능하도록 함
-  userAnswers?: Record<number, string[]>;
+  // 사용자의 답변을 문제의 고유 ID를 키로 사용하여 저장
+  userAnswers?: Record<string, string[]>;
   score: number;
   totalQuestions: number;
   createdAt: Timestamp | null;
