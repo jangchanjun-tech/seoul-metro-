@@ -22,9 +22,10 @@ import { auth } from './firebase/config';
 type AppState = 'home' | 'quiz' | 'dashboard' | 'admin';
 const COMPETENCIES: (keyof Omit<SystemStats, 'total'>)[] = ["지휘감독능력", "책임감 및 적극성", "관리자로서의 자세 및 청렴도", "경영의식 및 혁신성", "업무의 이해도 및 상황대응력"];
 
-// 🚨 보안 강화: 여기에 관리자로 지정할 사용자의 Firebase UID를 입력하세요.
-// 스크린샷의 UID를 반영했습니다. 만약 관리자 버튼이 보이지 않는다면, Firebase 콘솔에서 전체 UID를 복사하여 아래 값을 교체하세요.
-const ADMIN_UIDS = ['GoK2Ltn3G9Rt3JWh1uWZ3y7'];
+// 🚨 [중요] 보안 설정: 관리자 페이지에 접속할 사용자의 전체 Firebase UID를 여기에 입력하세요.
+// Firebase 콘솔 > Authentication > Users 탭에서 '사용자 UID'를 복사하여 아래 배열의 값을 교체하세요.
+// 예: const ADMIN_UIDS = ['Abc123xyz...'];
+const ADMIN_UIDS = ['GoK2Ltn3G9Rt3JWh1uWZ3y739C93'];
 
 
 const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
@@ -202,43 +203,25 @@ const App: React.FC = () => {
         // 1. Get user's seen question IDs
         const seenIds = await getSeenQuestionIds(userId);
 
-        // 2. Fetch 1 bank question for EACH competency
-        const bankQuestionPromises = COMPETENCIES.map(competency => 
-            fetchBankQuestions(competency, 1, seenIds)
-        );
+        const allPromises = COMPETENCIES.map(async (competency) => {
+            const bankPromise = fetchBankQuestions(competency, 1, seenIds);
+            const realtimePromise = generateSingleQuiz(competency);
+            
+            const [bankResult, realtimeResult] = await Promise.all([bankPromise, realtimePromise]);
+            
+            return { bank: bankResult, realtime: realtimeResult };
+        });
 
-        // 3. Generate 1 real-time question for EACH competency
-        const realtimeGenerationPromises = COMPETENCIES.map(competency =>
-            generateSingleQuiz(competency)
-        );
+        const results = await Promise.all(allPromises);
 
-        // 4. Execute all promises in parallel
-        const [bankQuestionArrays, newRawQuestions] = await Promise.all([
-            Promise.all(bankQuestionPromises),
-            Promise.all(realtimeGenerationPromises)
-        ]);
+        const bankQuestions = results.flatMap(r => r.bank);
+        const newRawQuestions = results.map(r => r.realtime);
 
-        const bankQuestions = bankQuestionArrays.flat();
-        
-        // 5. Save new real-time questions to the bank
+        // Save new real-time questions to the bank
         const newSavedQuestions = await saveNewQuestions(newRawQuestions);
 
-        // 6. Combine and start quiz
+        // Combine and start quiz
         const finalQuizSet = [...bankQuestions, ...newSavedQuestions];
-        
-        if (finalQuizSet.length < 10) {
-            console.warn(`Generated ${finalQuizSet.length} questions, expected 10. This might be due to an empty question bank for some competencies.`);
-            const needed = 10 - finalQuizSet.length;
-            if (needed > 0) {
-                 const extraQsPromises = Array.from({ length: needed }, (_, i) => {
-                    const competency = COMPETENCIES[i % COMPETENCIES.length];
-                    return generateSingleQuiz(competency);
-                 });
-                 const extraRawQs = await Promise.all(extraQsPromises);
-                 const extraSavedQs = await saveNewQuestions(extraRawQs);
-                 finalQuizSet.push(...extraSavedQs);
-            }
-        }
         
         const shuffledQuizSet = shuffleArray(finalQuizSet).map(q => ({...q, options: shuffleArray(q.options)}));
 
