@@ -22,6 +22,11 @@ import { auth } from './firebase/config';
 type AppState = 'home' | 'quiz' | 'dashboard' | 'admin';
 const COMPETENCIES: (keyof Omit<SystemStats, 'total'>)[] = ["지휘감독능력", "책임감 및 적극성", "관리자로서의 자세 및 청렴도", "경영의식 및 혁신성", "업무의 이해도 및 상황대응력"];
 
+// 🚨 보안 강화: 여기에 관리자로 지정할 사용자의 Firebase UID를 입력하세요.
+// 스크린샷의 UID를 반영했습니다. 만약 관리자 버튼이 보이지 않는다면, Firebase 콘솔에서 전체 UID를 복사하여 아래 값을 교체하세요.
+const ADMIN_UIDS = ['GoK2Ltn3G9RGoK2Ltn3G9Rt3JWh1uWZ3y739C93'];
+
+
 const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
     const [stats, setStats] = useState<SystemStats | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -356,7 +361,7 @@ const App: React.FC = () => {
                 {user && appState === 'home' && (
                   <button onClick={() => setAppState('dashboard')} className="text-white font-medium py-2 px-4 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base">마이페이지</button>
                 )}
-                {user && appState === 'home' && (
+                {user && ADMIN_UIDS.includes(user.uid) && appState === 'home' && (
                   <button onClick={() => setAppState('admin')} className="text-white font-medium py-2 px-4 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base">관리자</button>
                 )}
                 <button onClick={() => setIsGuideModalOpen(true)} className="text-white font-medium py-2 px-4 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base">이용안내</button>
