@@ -1,10 +1,15 @@
+// FIX: Add Vite client types to fix error on import.meta.env
+/// <reference types="vite/client" />
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { QuizItem } from '../types';
 
-const apiKey = process.env.API_KEY;
+// Use Vite's standard way to access environment variables
+const apiKey = import.meta.env.VITE_API_KEY;
 
 if (!apiKey) {
-  throw new Error("API_KEY is not set in the environment variables. Please configure it in your deployment settings.");
+  // Provide a more helpful error message for deployment
+  throw new Error("VITE_API_KEY is not set. Please add it to your environment variables in your deployment settings (e.g., Vercel).");
 }
 
 const ai = new GoogleGenAI({ apiKey });
