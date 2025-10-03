@@ -54,35 +54,33 @@ const App: React.FC = () => {
     const autoGenIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
 
-    // Authentication Listener & Admin Check
+    // Authentication Listener, Admin Check & Initial Setup
     useEffect(() => {
         if (!isFirebaseInitialized || !auth || !db) {
             setError("로그인/데이터베이스 서비스가 초기화되지 않았습니다. Firebase 환경 변수 설정을 확인해주세요.");
             setIsAuthLoading(false);
             return;
         }
+
+        // Check for Gemini API key on initial load for better user feedback.
+        if (!isGeminiInitialized) {
+            setError("AI 서비스가 초기화되지 않았습니다. Vercel 또는 로컬 환경에 `VITE_API_KEY` 환경 변수가 올바르게 설정되었는지 확인해주세요.");
+        }
+
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             if (currentUser) {
-                await ensureUserDocument(currentUser.uid, {
+                // This function now handles creating the user document AND assigning the 'admin' role
+                // to the very first user automatically. It returns the user's role.
+                const { role } = await ensureUserDocument(currentUser.uid, {
                     email: currentUser.email,
                     displayName: currentUser.displayName,
                 });
                 
-                // Firestore에서 사용자 역할을 확인하여 관리자 여부 결정
-                try {
-                    const userDocRef = doc(db, 'users', currentUser.uid);
-                    const userDocSnap = await getDoc(userDocRef);
-                    if (userDocSnap.exists() && userDocSnap.data().role === 'admin') {
-                        setIsAdmin(true);
-                    } else {
-                        setIsAdmin(false);
-                    }
-                } catch (error) {
-                    console.error("관리자 권한 확인 중 오류 발생:", error);
-                    setIsAdmin(false); // 에러 발생 시 안전하게 비관리자로 처리
-                }
+                // Set admin state based on the role from the database.
+                setIsAdmin(role === 'admin');
+
             } else {
-                // 로그아웃 시 관리자 상태 초기화
+                // Reset admin state on logout.
                 setIsAdmin(false);
             }
             setUser(currentUser);
@@ -127,8 +125,9 @@ const App: React.FC = () => {
             setError("AI 서비스가 초기화되지 않았습니다. VITE_API_KEY 환경 변수가 올바르게 설정되었는지 확인해주세요.");
             return;
         }
+        
+        setError(null); // Clear previous errors before starting
         setIsLoading(true);
-        setError(null);
         setAppState('loading');
 
         try {

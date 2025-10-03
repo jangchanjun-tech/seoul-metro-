@@ -18,17 +18,43 @@ import {
 } from 'firebase/firestore';
 
 // User Management
-export const ensureUserDocument = async (uid: string, userData: { email: string | null; displayName: string | null }) => {
-    if (!db) return;
+export const ensureUserDocument = async (uid: string, userData: { email: string | null; displayName: string | null }): Promise<{ role: string }> => {
+    if (!db) return { role: 'user' };
     const userRef = doc(db, 'users', uid);
+    
     const userSnap = await getDoc(userRef);
-    if (!userSnap.exists()) {
-        await setDoc(userRef, {
-            ...userData,
-            createdAt: Timestamp.now(),
-            attemptCount: 0,
-        });
+
+    if (userSnap.exists()) {
+        // User already exists, return their role. Default to 'user' if not present.
+        return { role: userSnap.data()?.role || 'user' };
     }
+
+    // This is a new user. Check if they should be the first admin.
+    const usersRef = collection(db, 'users');
+    const adminQuery = query(usersRef, where("role", "==", "admin"), limit(1));
+    const adminSnapshot = await getDocs(adminQuery);
+    
+    const newUserData: {
+        email: string | null;
+        displayName: string | null;
+        createdAt: Timestamp;
+        attemptCount: number;
+        role: string;
+    } = {
+        ...userData,
+        createdAt: Timestamp.now(),
+        attemptCount: 0,
+        role: 'user' // Default role
+    };
+    
+    if (adminSnapshot.empty) {
+        // No admin exists in the system, so make this new user the first admin.
+        console.log(`Assigning the first admin role to user ${uid}`);
+        newUserData.role = 'admin';
+    }
+    
+    await setDoc(userRef, newUserData);
+    return { role: newUserData.role };
 };
 
 export const incrementUserAttemptCount = async (uid: string): Promise<{ isFirstAttempt: boolean }> => {
