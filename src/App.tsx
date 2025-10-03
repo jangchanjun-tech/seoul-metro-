@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { getAIVerification, shuffleArray, generateSingleQuiz } from './services/geminiService';
+import { getAIVerification, shuffleArray, generateSingleQuiz, isGeminiInitialized } from './services/geminiService';
 import { 
   saveQuizResult, 
   getSeenQuestionIds, 
@@ -14,7 +14,7 @@ import {
   getUserData,
   incrementUserGenerationCount,
 } from './services/firebaseService';
-import { QuizItem, User, SystemStats } from './types';
+import { QuizItem, User, SystemStats, QuizResult } from './types';
 import Loader from './components/Loader';
 import QuizCard from './components/QuizCard';
 import Auth from './components/Auth';
@@ -22,9 +22,9 @@ import GuideModal from './components/GuideModal';
 import HomeScreen from './components/HomeScreen';
 import Dashboard from './components/Dashboard';
 import QuizTimer from './components/QuizTimer'; // 타이머 컴포넌트 import
-import { auth } from './firebase/config';
+import { auth, isFirebaseInitialized } from './firebase/config';
 
-type AppState = 'home' | 'quiz' | 'dashboard' | 'admin';
+type AppState = 'home' | 'quiz' | 'dashboard' | 'admin' | 'review';
 const COMPETENCIES: (keyof Omit<SystemStats, 'total'>)[] = ["지휘감독능력", "책임감 및 적극성", "관리자로서의 자세 및 청렴도", "경영의식 및 혁신성", "업무의 이해도 및 상황대응력"];
 
 // 🚨 [중요] 보안 설정: 관리자 페이지에 접속할 사용자의 전체 Firebase UID를 여기에 입력하세요.
@@ -34,14 +34,15 @@ const ADMIN_UIDS = ['GoK2Ltn3G9Rt3JWh1uWZ3y739C93'];
 const CONCURRENT_GENERATIONS = 5; // 병렬 생성 개수
 
 
-const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
+const AdminPanel = ({onGoHome}: {onGoHome: () => void}) => {
     const [stats, setStats] = useState<SystemStats | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
     const generationWorkers = useRef<boolean[]>([]);
 
     const addLog = useCallback((message: string) => {
-        setLogs(prev => [\`[\${new Date().toLocaleTimeString()}] \${message}\`, ...prev].slice(0, 100));
+        const timestamp = '[' + new Date().toLocaleTimeString() + ']';
+        setLogs(prev => [timestamp + ' ' + message, ...prev].slice(0, 100));
     }, []);
 
     const fetchStats = useCallback(async () => {
@@ -63,7 +64,8 @@ const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
     }, [addLog]);
 
     const startGeneration = useCallback(() => {
-        addLog(\`\${CONCURRENT_GENERATIONS}개의 병렬 프로세스로 문제 생성을 시작합니다...\`);
+        // FIX: The '+' operator cannot be applied to type 'symbol'. Replaced with a template literal.
+        addLog(`${CONCURRENT_GENERATIONS}개의 병렬 프로세스로 문제 생성을 시작합니다...`);
         setIsGenerating(true);
         generationWorkers.current = Array(CONCURRENT_GENERATIONS).fill(true);
 
@@ -90,12 +92,14 @@ const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
             const targetCompetency = underfilledCompetencies[Math.floor(Math.random() * underfilledCompetencies.length)];
             
             try {
-                addLog(\`[Worker \${workerId}] '\${targetCompetency}' 역량 문제 생성 시도...\`);
+                // FIX: Explicitly convert `targetCompetency` to a string to prevent implicit conversion errors from symbol types.
+                addLog(`[Worker ${workerId}] '${String(targetCompetency)}' 역량 문제 생성 시도...`);
                 const newQuestion = await generateSingleQuiz(targetCompetency);
                 await saveSingleQuestionToBank(newQuestion);
-                addLog(\`[Worker \${workerId}] 성공: '\${targetCompetency}' 문제 1개 저장 완료.\`);
+                // FIX: Explicitly convert `targetCompetency` to a string to prevent implicit conversion errors from symbol types.
+                addLog(`[Worker ${workerId}] 성공: '${String(targetCompetency)}' 문제 1개 저장 완료.`);
             } catch (error) {
-                addLog(\`[Worker \${workerId}] 오류: 생성 실패. \${error instanceof Error ? error.message.substring(0, 50) : '알 수 없는 오류'}\`);
+                addLog(`[Worker ${workerId}] 오류: 생성 실패. ${error instanceof Error ? error.message.substring(0, 50) : '알 수 없는 오류'}`);
             }
 
             // Loop
@@ -117,7 +121,7 @@ const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-center">
                         <div className="bg-gray-800 p-3 rounded"><p className="text-gray-400">총 문제</p><p className="text-xl font-bold text-indigo-400">{stats.total} / 50000</p></div>
                         {COMPETENCIES.map(c => (
-                            <div key={c} className="bg-gray-800 p-3 rounded"><p className="text-gray-400 text-sm">{c}</p><p className="text-xl font-bold">{stats[c]} / 10000</p></div>
+                            <div key={String(c)} className="bg-gray-800 p-3 rounded"><p className="text-gray-400 text-sm">{String(c)}</p><p className="text-xl font-bold">{stats[c]} / 10000</p></div>
                         ))}
                     </div>
                 ) : <p>통계 로딩 중...</p>}
@@ -146,7 +150,6 @@ const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
     );
 };
 
-
 const App: React.FC = () => {
   const [quizData, setQuizData] = useState<QuizItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -161,15 +164,17 @@ const App: React.FC = () => {
   const [verificationResults, setVerificationResults] = useState<Record<string, string>>({});
   const [isVerifying, setIsVerifying] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0); // 타이머 상태 추가
+  const [reviewResult, setReviewResult] = useState<QuizResult | null>(null);
   const mainRef = useRef<HTMLElement>(null);
   
   const formatTime = (timeInSeconds: number) => {
     const minutes = Math.floor(timeInSeconds / 60);
     const seconds = timeInSeconds % 60;
-    return \`\${String(minutes).padStart(2, '0')}:\${String(seconds).padStart(2, '0')}\`;
+    return String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
   };
 
   useEffect(() => {
+    if (!auth) return;
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
         if (currentUser) {
             const userData = await getUserData(currentUser.uid);
@@ -222,17 +227,19 @@ const App: React.FC = () => {
   }, [appState]);
 
   const handleStartQuiz = useCallback(async () => {
-    if (!auth.currentUser) {
+    if (!isGeminiInitialized || !isFirebaseInitialized) {
+        alert("API 키가 설정되지 않아 AI 퀴즈를 생성할 수 없습니다. 프로젝트의 .env 파일을 확인해주세요.");
+        return;
+    }
+    if (!auth || !auth.currentUser) {
       setIsAuthModalOpen(true);
       return;
     }
     
-    // Increment generation count
     incrementUserGenerationCount(auth.currentUser.uid);
     setUser(prevUser => prevUser ? { ...prevUser, generationCount: (prevUser.generationCount || 0) + 1 } : null);
 
-    // Reset all states
-    setElapsedTime(0); // 타이머 초기화
+    setElapsedTime(0);
     setIsLoading(true);
     setIsGeneratingMore(false);
     setError(null);
@@ -246,37 +253,53 @@ const App: React.FC = () => {
     try {
         const userId = auth.currentUser.uid;
         const seenIds = await getSeenQuestionIds(userId);
+        const QUIZ_TOTAL_QUESTIONS = 10;
 
-        // --- Phase 1: Fetch from Bank (Fast Path) ---
-        console.log("1단계: 문제 은행에서 5문제 즉시 로딩 시작...");
-        const bankQuestions = await fetchInitialBankSet(COMPETENCIES.slice(0, 5), seenIds);
+        console.log(`1단계: 문제 은행에서 최대 ${QUIZ_TOTAL_QUESTIONS}문제 즉시 로딩 시작...`);
+        const bankQuestions = await fetchInitialBankSet(COMPETENCIES, seenIds);
+        
         setQuizData(bankQuestions.map(q => ({...q, options: shuffleArray(q.options)})));
         setIsLoading(false); 
-        console.log(\`1단계 완료: \${bankQuestions.length}개의 문제를 즉시 표시했습니다.\`);
+        console.log(`1단계 완료: ${bankQuestions.length}개의 문제를 즉시 표시했습니다.`);
 
-        // --- Phase 2: Generate from AI (Slow Path, in background) ---
-        setIsGeneratingMore(true);
-        console.log("2단계: AI로 나머지 5문제 백라운드 생성 시작...");
+        const questionsNeededFromAI = QUIZ_TOTAL_QUESTIONS - bankQuestions.length;
 
-        const aiPromises = COMPETENCIES.slice(0, 5).map(competency => 
-            generateSingleQuiz(competency)
-        );
-        const newQuestionsFromAI = await Promise.all(aiPromises);
+        if (questionsNeededFromAI > 0) {
+            setIsGeneratingMore(true);
+            console.log(`2단계: AI로 나머지 ${questionsNeededFromAI}문제 백라운드 생성 시작...`);
 
-        // Once all questions are generated, update the state in a single batch to avoid race conditions
-        setQuizData(prevData => [
-            ...prevData, 
-            ...newQuestionsFromAI.map(q => ({...q, options: shuffleArray(q.options)}))
-        ]);
-        
-        setIsGeneratingMore(false);
-        console.log("2단계 완료: 5개의 AI 문제 생성이 완료되었습니다.");
+            // To ensure competency diversity, we pick competencies that are least represented
+            const bankCompetencyCounts = bankQuestions.reduce((acc, q) => {
+                acc[q.competency] = (acc[q.competency] || 0) + 1;
+                return acc;
+            }, {} as Record<string, number>);
+            
+            const competenciesToGenerate = [];
+            const sortedCompetencies = [...COMPETENCIES].sort((a, b) => (bankCompetencyCounts[a] || 0) - (bankCompetencyCounts[b] || 0));
 
-        // --- Phase 3: Save new questions to bank ---
-        if (newQuestionsFromAI.length > 0) {
-            console.log("3단계: 새로 생성된 문제를 문제 은행에 저장합니다...");
-            await saveNewQuestions(newQuestionsFromAI);
-            console.log("3단계 완료: 저장이 완료되었습니다.");
+            for(let i = 0; i < questionsNeededFromAI; i++) {
+                competenciesToGenerate.push(sortedCompetencies[i % sortedCompetencies.length]);
+            }
+
+            const aiPromises = competenciesToGenerate.map(competency => 
+                generateSingleQuiz(competency)
+            );
+            
+            const newQuestionsFromAI = await Promise.all(aiPromises);
+
+            setQuizData(prevData => shuffleArray([
+                ...prevData, 
+                ...newQuestionsFromAI.map(q => ({...q, options: shuffleArray(q.options)}))
+            ]));
+            
+            setIsGeneratingMore(false);
+            console.log(`2단계 완료: ${questionsNeededFromAI}개의 AI 문제 생성이 완료되었습니다.`);
+
+            if (newQuestionsFromAI.length > 0) {
+                console.log("3단계: 새로 생성된 문제를 문제 은행에 저장합니다...");
+                await saveNewQuestions(newQuestionsFromAI);
+                console.log("3단계 완료: 저장이 완료되었습니다.");
+            }
         }
         
     } catch (err) {
@@ -297,7 +320,7 @@ const App: React.FC = () => {
 
   const calculateScore = useCallback(() => {
     let totalPoints = 0;
-    const maxPointsPerQuestion = 6; // best(3) + best(3)
+    const maxPointsPerQuestion = 6;
     quizData.forEach((item) => {
         const userSelection = userAnswers[item.id] || [];
         userSelection.forEach(answer => {
@@ -345,22 +368,57 @@ const App: React.FC = () => {
       setAppState('home');
       setQuizData([]);
       setError(null);
-      setElapsedTime(0); // 홈으로 갈 때 타이머 초기화
+      setElapsedTime(0);
+      setReviewResult(null);
   };
   
-  const isQuizFinished = quizData.length === 10 && quizData.every((item) => (userAnswers[item.id] || []).length === 2);
+  const handleStartReview = (result: QuizResult) => {
+      setReviewResult(result);
+      setAppState('review');
+  };
+  
+  const isQuizFinished = quizData.length >= 10 && quizData.every((item) => (userAnswers[item.id] || []).length === 2);
 
   const renderContent = () => {
     if (appState === 'admin') {
       return <AdminPanel onGoHome={handleGoHome} />;
     }
     if (appState === 'dashboard') {
-      return <Dashboard user={user!} onGoHome={handleGoHome} />;
+      return <Dashboard user={user!} onGoHome={handleGoHome} onReviewResult={handleStartReview} />;
+    }
+    if (appState === 'review' && reviewResult) {
+      return (
+        <div className="space-y-4">
+          <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700 flex justify-between items-center">
+             <div>
+                <h2 className="text-xl font-bold text-indigo-300">시험 다시보기</h2>
+                <p className="text-sm text-gray-400">
+                    {reviewResult.createdAt ? new Date(reviewResult.createdAt.toMillis()).toLocaleString() : '날짜 미상'} / 최종 점수: {reviewResult.score}점
+                </p>
+             </div>
+             <button onClick={() => setAppState('dashboard')} className="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all">
+                마이페이지로
+             </button>
+          </div>
+          {reviewResult.quizData.map((item, index) => (
+             <QuizCard
+                key={item.id}
+                quizItem={item}
+                questionIndex={index}
+                userAnswers={reviewResult.userAnswers?.[item.id] || []}
+                showResults={true}
+                onToggleAnswer={() => {}}
+                isVerifying={false}
+                isReviewMode={true}
+             />
+          ))}
+        </div>
+      );
     }
     if (appState === 'home') {
       return <HomeScreen onStartQuiz={handleStartQuiz} isLoading={isLoading} />;
     }
-    if (isLoading) { // This is now only the initial, brief loader
+    if (isLoading) {
         return <Loader />;
     }
     if (error) {

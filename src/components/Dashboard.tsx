@@ -8,12 +8,12 @@ import { serverTimestamp } from 'firebase/firestore';
 interface DashboardProps {
   user: User;
   onGoHome: () => void;
+  onReviewResult: (result: QuizResult) => void;
 }
 
 const COMPETENCIES = ["지휘감독능력", "책임감 및 적극성", "관리자로서의 자세 및 청렴도", "경영의식 및 혁신성", "업무의 이해도 및 상황대응력"];
 
 // Helper to calculate score for a set of questions and answers
-// FIX: Imported the 'QuizItem' type from '../types' to resolve the 'Cannot find name' error.
 const calculateScore = (items: QuizItem[], answers: Record<string, string[]> | undefined): number => {
     if (!answers || items.length === 0) return 0;
     
@@ -54,8 +54,8 @@ const ScoreTrendChart: React.FC<{ results: QuizResult[] }> = ({ results }) => {
                             <span className="text-xs text-white mb-1">{result.score}</span>
                             <div 
                                 className="w-full bg-indigo-500 rounded-t-md hover:bg-indigo-400 transition-colors duration-300" 
-                                style={{ height: `${result.score}%` }}
-                                title={`${index + 1}회차 누적 평균: ${result.score}점`}
+                                style={{ height: result.score + '%' }}
+                                title={(index + 1) + '회차 누적 평균: ' + result.score + '점'}
                             >
                             </div>
                             <p className="text-xs text-gray-400 mt-2 whitespace-nowrap">{index + 1}회차</p>
@@ -74,7 +74,7 @@ const ScoreTrendChart: React.FC<{ results: QuizResult[] }> = ({ results }) => {
 const Bar = ({ value, color, label }: { value: number; color: string; label: string; }) => (
     <div className="flex flex-col items-center w-[45%]">
         <div className="w-full h-20 bg-gray-700/50 rounded-t-md flex items-end relative">
-            <div className={`${color} w-full rounded-t-md transition-all duration-500 ease-out`} style={{ height: `${value}%` }} title={`${label}: ${value}점`}></div>
+            <div className={color + " w-full rounded-t-md transition-all duration-500 ease-out"} style={{ height: value + '%' }} title={label + ': ' + value + '점'}></div>
             <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-sm font-semibold text-white">{value}</span>
         </div>
         <p className="text-xs text-gray-400 mt-2 text-center">{label}</p>
@@ -87,8 +87,8 @@ const getPerformanceColorStyle = (score: number, min: number, max: number, hasAt
     // Hue: 0 is red (worst score), 220 is a nice blue (best score).
     const hue = normalized * 220; 
     return { 
-        backgroundColor: `hsla(${hue}, 60%, 20%, 0.4)`,
-        borderColor: `hsla(${hue}, 60%, 40%, 0.5)`
+        backgroundColor: 'hsla(' + hue + ', 60%, 20%, 0.4)',
+        borderColor: 'hsla(' + hue + ', 60%, 40%, 0.5)'
     };
 };
 
@@ -96,11 +96,11 @@ const getPerformanceTextStyle = (score: number, min: number, max: number, hasAtt
     if (!hasAttempts || max === min) return {};
     const normalized = (score - min) / (max - min);
     const hue = normalized * 220;
-    return { color: `hsl(${hue}, 70%, 65%)` };
+    return { color: 'hsl(' + hue + ', 70%, 65%)' };
 };
 
 
-const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
+const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome, onReviewResult }) => {
   const [userResults, setUserResults] = useState<QuizResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -247,6 +247,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
     <div className="space-y-8 animate-fade-in">
       <h1 className="text-3xl font-bold text-center text-indigo-300">마이페이지: 성과 분석 리포트</h1>
       
+      {/* --- 성적 추이 분석 --- */}
       <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700">
         <div className="flex justify-between items-baseline mb-4">
             <h2 className="text-xl font-semibold text-white">성적추이분석(회차별누계평균)</h2>
@@ -267,6 +268,33 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
         <ScoreTrendChart results={userResults} />
       </div>
 
+      {/* --- 응시 기록 (새로운 섹션) --- */}
+      <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700">
+        <h2 className="text-xl font-semibold text-white mb-4">응시 기록</h2>
+        <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+            {userResults.map((result) => (
+                <div 
+                    key={result.id}
+                    onClick={() => onReviewResult(result)}
+                    className="bg-gray-900/50 hover:bg-gray-900/80 p-4 rounded-lg border border-gray-700 flex justify-between items-center cursor-pointer transition-all"
+                >
+                    <div>
+                        <p className="font-semibold text-white">{result.topic}</p>
+                        <p className="text-sm text-gray-400">
+                            {result.createdAt ? new Date(result.createdAt.toMillis()).toLocaleString() : '날짜 정보 없음'}
+                        </p>
+                    </div>
+                    <div className="text-right">
+                        <p className="text-lg font-bold text-indigo-400">{result.score}점</p>
+                        <span className="text-xs bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full">다시보기</span>
+                    </div>
+                </div>
+            ))}
+        </div>
+      </div>
+
+
+      {/* --- 과목별 성과 지수 --- */}
       <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700">
         <h2 className="text-xl font-semibold text-white mb-4">과목별 성과지수</h2>
          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
@@ -292,6 +320,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
         <p className="text-xs text-gray-500 mt-4 text-center">* 점수는 100점 만점으로 환산된 값입니다. 데이터는 업데이트 이후 응시한 시험부터 반영됩니다.</p>
       </div>
 
+      {/* --- AI 역량 심층 분석 --- */}
       <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700">
         <h2 className="text-xl font-semibold text-white mb-4">AI 역량 심층 분석</h2>
         {isAnalysisLoading ? (

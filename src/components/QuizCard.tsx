@@ -9,9 +9,10 @@ interface QuizCardProps {
   onToggleAnswer: (answer: string) => void;
   isVerifying: boolean;
   verificationResult?: string;
+  isReviewMode?: boolean;
 }
 
-const QuizCard: React.FC<QuizCardProps> = ({ quizItem, questionIndex, userAnswers, showResults, onToggleAnswer, isVerifying, verificationResult }) => {
+const QuizCard: React.FC<QuizCardProps> = ({ quizItem, questionIndex, userAnswers, showResults, onToggleAnswer, isVerifying, verificationResult, isReviewMode }) => {
 
   const getOptionType = (option: string): '최선' | '차선' | '최악' | null => {
     if (quizItem.bestAnswers.includes(option)) return '최선';
@@ -122,22 +123,26 @@ const QuizCard: React.FC<QuizCardProps> = ({ quizItem, questionIndex, userAnswer
             <h4 className="font-semibold text-indigo-300 mb-2">상세 해설</h4>
             <p className="text-gray-300 whitespace-pre-wrap">{quizItem.explanation}</p>
           </div>
-          <hr className="my-3 border-gray-600" />
-          <div className="mt-4">
-              <h4 className="font-semibold text-indigo-300 mb-2">AI 검증 결과</h4>
-              {isVerifying && !verificationResult && (
-                  <div className="flex items-center gap-2 text-gray-400 text-xs">
-                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      <span>해설의 논리적 타당성을 검증하고 있습니다...</span>
-                  </div>
-              )}
-              {verificationResult && (
-                  <p className="text-gray-300 whitespace-pre-wrap">{verificationResult}</p>
-              )}
-          </div>
+          {!isReviewMode && (
+            <>
+              <hr className="my-3 border-gray-600" />
+              <div className="mt-4">
+                  <h4 className="font-semibold text-indigo-300 mb-2">AI 검증 결과</h4>
+                  {isVerifying && !verificationResult && (
+                      <div className="flex items-center gap-2 text-gray-400 text-xs">
+                          <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          <span>해설의 논리적 타당성을 검증하고 있습니다...</span>
+                      </div>
+                  )}
+                  {verificationResult && (
+                      <p className="text-gray-300 whitespace-pre-wrap">{verificationResult}</p>
+                  )}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

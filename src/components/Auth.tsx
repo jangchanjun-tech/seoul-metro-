@@ -45,7 +45,8 @@ const Auth: React.FC<AuthProps> = ({ user, isModalOpen, onToggleModal }) => {
       handleCloseModal();
     } catch (err) {
       console.error("Email sign-in error:", err);
-      const firebaseError = err as AuthError;
+      // FIX: Cast error to a type with a 'code' property to handle Firebase auth errors correctly.
+      const firebaseError = err as { code: string };
       switch (firebaseError.code) {
           case 'auth/user-not-found':
           case 'auth/wrong-password':
@@ -74,7 +75,8 @@ const Auth: React.FC<AuthProps> = ({ user, isModalOpen, onToggleModal }) => {
       handleCloseModal();
     } catch (err) {
         console.error("Email sign-up error:", err);
-        const firebaseError = err as AuthError;
+        // FIX: Cast error to a type with a 'code' property to handle Firebase auth errors correctly.
+        const firebaseError = err as { code: string };
         switch (firebaseError.code) {
             case 'auth/email-already-in-use':
                 setError('이미 사용 중인 이메일입니다.');

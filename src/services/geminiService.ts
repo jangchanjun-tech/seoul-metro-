@@ -1,13 +1,18 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { QuizItem, QuizResult, SystemStats, CompetencyAnalysis } from '../types';
 
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+const apiKey = import.meta.env.VITE_API_KEY || import.meta.env.VITE_GEMINI_API_KEY;
 
-if (!apiKey) {
-  throw new Error("VITE_GEMINI_API_KEY is not set. Please add it to your environment variables in your Vercel deployment settings.");
+let ai: GoogleGenAI | null = null;
+export let isGeminiInitialized = false;
+
+if (apiKey) {
+    ai = new GoogleGenAI({ apiKey });
+    isGeminiInitialized = true;
+} else {
+    console.warn("VITE_GEMINI_API_KEY 또는 VITE_API_KEY 환경 변수가 설정되지 않았습니다. Gemini 관련 기능이 비활성화됩니다.");
 }
 
-const ai = new GoogleGenAI({ apiKey });
 
 export function shuffleArray<T>(array: T[]): T[] {
     const newArray = [...array];
@@ -84,6 +89,9 @@ const questionArchetypes = [
 ];
 
 export const generateSingleQuiz = async (competency: string): Promise<QuizItem> => {
+    if (!ai) {
+        throw new Error("Gemini AI가 초기화되지 않았습니다. API 키 설정을 확인해주세요.");
+    }
     try {
         const systemInstruction = `당신은 서울교통공사 3급 역량평가 시험의 상황판단문제를 출제하는 서울교통공사 내부의 최고 전문가입니다. 당신의 임무는 공사의 핵심가치(안전우선, 고객지향, 도전혁신, 지속경영)와 내부 규정 및 위기대응 매뉴얼에 입각하여, 응시자의 5가지 핵심 역량을 정확하게 측정할 수 있는 현실적이고 어려운 시나리오 기반 문제를 만드는 것입니다. 모든 정답(최선, 차선)은 반드시 서울교통공사가 공식적으로 요구하는 행동 기준에 부합해야 합니다. 문제 수준은 '고급' 또는 '상급'이어야 합니다.`;
         
@@ -134,9 +142,6 @@ export const generateSingleQuiz = async (competency: string): Promise<QuizItem> 
         const jsonText = response.text.trim();
         const quizData = JSON.parse(jsonText) as Omit<QuizItem, 'id'>;
         
-        // FIX: Add a check to ensure the parsed quizData is not null or undefined.
-        // This ensures the function always returns a valid QuizItem or throws an error,
-        // satisfying the TypeScript compiler and fixing the "must return a value" error.
         if (quizData) {
             return { ...quizData, id: crypto.randomUUID() };
         }
@@ -152,6 +157,9 @@ export const generateSingleQuiz = async (competency: string): Promise<QuizItem> 
 };
 
 export const getAIVerification = async (quizItem: QuizItem): Promise<string> => {
+    if (!ai) {
+        return "AI가 초기화되지 않아 검증을 건너<binary data, 1 bytes><binary data, 1 bytes><binary data, 1 bytes>니다.";
+    }
     try {
         const { passage, question, bestAnswers, secondBestAnswers, worstAnswer, explanation, competency } = quizItem;
         const systemInstruction = `당신은 AI가 생성한 교육 콘텐츠를 검증하는 고도로 숙련된 품질 관리 전문가입니다. 당신의 목표는 객관적이고, 비판적인 시각으로 주어진 문제와 해설의 논리적 타당성, 일관성, 교육적 가치를 평가하는 것입니다.`;
@@ -203,6 +211,10 @@ const analysisSchema = {
 };
 
 export const generateCompetencyAnalysis = async (userResults: QuizResult[]): Promise<CompetencyAnalysis> => {
+    if (!ai) {
+        throw new Error("Gemini AI가 초기화되지 않았습니다. API 키 설정을 확인해주세요.");
+    }
+
     const systemInstruction = `당신은 데이터 기반의 HR 역량 분석 전문가입니다. 당신의 임무는 응시자의 모의고사 결과를 분석하여, 5가지 핵심 역량에 대한 강점과 약점을 진단하고, 다른 응시자들과 비교하여 건설적인 피드백을 제공하는 것입니다. 분석은 반드시 데이터에 기반해야 하며, 긍정적이고 성장을 독려하는 어조를 사용해야 합니다.`;
 
     // 데이터 요약 및 가공
@@ -246,8 +258,6 @@ export const generateCompetencyAnalysis = async (userResults: QuizResult[]): Pro
             },
         });
         const jsonText = response.text.trim();
-        // FIX: Add a check to ensure the parsed analysisData is not null or undefined.
-        // This ensures the function always returns a valid CompetencyAnalysis or throws an error.
         const analysisData = JSON.parse(jsonText) as CompetencyAnalysis;
         if (analysisData) {
             return analysisData;

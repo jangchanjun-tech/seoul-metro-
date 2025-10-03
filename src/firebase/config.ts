@@ -1,8 +1,7 @@
-// FIX: Removed reference to vite/client to resolve 'Cannot find type definition file' error.
 // Types for import.meta.env are now globally available from src/types.ts.
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth, setPersistence, browserSessionPersistence } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
+import { getAuth, setPersistence, browserSessionPersistence, type Auth } from "firebase/auth";
+import { getFirestore, type Firestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -13,17 +12,28 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-  throw new Error("Firebase config environment variables are not set. Please add VITE_FIREBASE_* variables to your environment.");
+let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
+let db: Firestore | null = null;
+export let isFirebaseInitialized = false;
+
+if (firebaseConfig.apiKey && firebaseConfig.projectId) {
+  try {
+    app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+    auth = getAuth(app);
+    db = getFirestore(app);
+    isFirebaseInitialized = true;
+    
+    setPersistence(auth, browserSessionPersistence)
+      .catch((error) => {
+        console.error("Error setting auth persistence:", error);
+      });
+  } catch (error) {
+    console.error("Firebase initialization failed:", error);
+    isFirebaseInitialized = false;
+  }
+} else {
+    console.warn("Firebase config environment variables are not set. Firebase features will be disabled.");
 }
-
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-const auth = getAuth(app);
-const db = getFirestore(app);
-
-setPersistence(auth, browserSessionPersistence)
-  .catch((error) => {
-    console.error("Error setting auth persistence:", error);
-  });
 
 export { auth, db };

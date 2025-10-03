@@ -63,6 +63,7 @@ export interface AnalysisCache {
 // Vite 환경 변수에 대한 타입 정의
 declare global {
   interface ImportMetaEnv {
+    readonly VITE_API_KEY: string;
     readonly VITE_GEMINI_API_KEY: string;
     readonly VITE_FIREBASE_API_KEY: string;
     readonly VITE_FIREBASE_AUTH_DOMAIN: string;

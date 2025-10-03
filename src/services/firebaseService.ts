@@ -85,7 +85,8 @@ export const getUserQuizResults = async (userId: string): Promise<QuizResult[]> 
         );
         const querySnapshot = await getDocs(q);
         querySnapshot.forEach((doc) => {
-            results.push({ id: doc.id, ...doc.data() } as QuizResult);
+            // FIX: Replaced spread syntax with Object.assign to resolve "Spread types may only be created from object types" build error.
+            results.push(Object.assign({ id: doc.id }, doc.data()) as QuizResult);
         });
 
         results.sort((a, b) => {
@@ -133,7 +134,8 @@ export const fetchBankQuestions = async (competency: string, count: number, seen
         );
         
         const snapshot = await getDocs(q);
-        const allFetched = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as QuizItem));
+        // FIX: Replaced spread syntax with Object.assign to resolve "Spread types may only be created from object types" build error.
+        const allFetched = snapshot.docs.map(d => (Object.assign({}, d.data(), { id: d.id }) as QuizItem));
         
         const unseenQuestions = allFetched.filter(item => item.id && !seenIds.has(item.id));
         
@@ -148,17 +150,27 @@ export const fetchBankQuestions = async (competency: string, count: number, seen
         return [];
 
     } catch (error) {
-        console.error(\`'\${competency}' 역량의 문제 은행 호출 중 오류:\`, error);
+        console.error(`'${competency}' 역량의 문제 은행 호출 중 오류:`, error);
         return [];
     }
 };
 
 export const fetchInitialBankSet = async (competencies: string[], seenIds: Set<string>): Promise<QuizItem[]> => {
+    // Try to get 2 questions per competency to build a pool of up to 10 questions.
     const fetchPromises = competencies.map(competency => 
-        fetchBankQuestions(competency, 1, seenIds)
+        fetchBankQuestions(competency, 2, seenIds)
     );
     const questionsPerCompetency = await Promise.all(fetchPromises);
-    return questionsPerCompetency.flat();
+    const allQuestions = questionsPerCompetency.flat();
+
+    // Shuffle all fetched questions to randomize
+    for (let i = allQuestions.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allQuestions[i], allQuestions[j]] = [allQuestions[j], allQuestions[i]];
+    }
+
+    // Return up to 10 questions
+    return allQuestions.slice(0, 10);
 };
 
 
@@ -187,14 +199,14 @@ export const saveNewQuestions = async (questions: QuizItem[]): Promise<void> => 
     batch.set(statsRef, statsUpdate, { merge: true });
 
     await batch.commit();
-    console.log(\`\${questions.length}개의 새 문제가 은행에 저장되고 통계가 업데이트되었습니다.\`);
+    console.log(`${questions.length}개의 새 문제가 은행에 저장되고 통계가 업데이트되었습니다.`);
 };
 
 export const updateSeenQuestions = async (userId: string, questionIds: string[]) => {
     if (!userId || questionIds.length === 0) return;
     const batch = writeBatch(db);
     questionIds.forEach(id => {
-        const docRef = doc(db, \`users/\${userId}/seenQuestions\`, id);
+        const docRef = doc(db, `users/${userId}/seenQuestions`, id);
         batch.set(docRef, { seenAt: serverTimestamp() });
     });
     await batch.commit();
@@ -222,8 +234,8 @@ export const getSystemStats = async (): Promise<SystemStats> => {
 
 export const saveSingleQuestionToBank = async (question: QuizItem): Promise<void> => {
     const statsUpdate: { [key: string]: any } = { total: increment(1) };
-    const competencyKey = question.competency as keyof SystemStats;
-    statsUpdate[competencyKey] = increment(1);
+// FIX: Using a direct string key instead of casting to `keyof SystemStats` to avoid potential 'symbol' indexing errors.
+    statsUpdate[question.competency] = increment(1);
 
     const batch = writeBatch(db);
     
@@ -239,7 +251,7 @@ export const saveSingleQuestionToBank = async (question: QuizItem): Promise<void
 
 export const getAnalysisCache = async (userId: string): Promise<AnalysisCache | null> => {
     try {
-        const cacheRef = doc(db, \`users/\${userId}/analysis/summary\`);
+        const cacheRef = doc(db, `users/${userId}/analysis/summary`);
         const cacheDoc = await getDoc(cacheRef);
         if (cacheDoc.exists()) {
             return cacheDoc.data() as AnalysisCache;
@@ -253,7 +265,7 @@ export const getAnalysisCache = async (userId: string): Promise<AnalysisCache | 
 
 export const saveAnalysisCache = async (userId: string, cacheData: AnalysisCache): Promise<void> => {
     try {
-        const cacheRef = doc(db, \`users/\${userId}/analysis/summary\`);
+        const cacheRef = doc(db, `users/${userId}/analysis/summary`);
         await setDoc(cacheRef, cacheData);
         console.log("AI analysis cache saved successfully.");
     } catch (error) {
