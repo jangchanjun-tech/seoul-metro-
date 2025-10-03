@@ -22,7 +22,8 @@ const COMPETENCIES = [
     '경영의식 및 혁신성', '업무의 이해도 및 상황대응력'
 ];
 
-// This should be managed in a secure way in a real production environment
+// [!!중요!!] 관리자 기능을 활성화하려면 아래 YOUR_ADMIN_UID_HERE를 본인의 Firebase UID로 교체하세요.
+// UID는 Firebase 콘솔 > Authentication > Users 탭에서 확인할 수 있습니다.
 const ADMIN_UIDS = ['YOUR_ADMIN_UID_HERE', 'ANOTHER_ADMIN_UID_HERE'];
 
 
