@@ -34,7 +34,16 @@ const calculateScore = (items: QuizItem[], answers: Record<string, string[]> | u
 };
 
 const ScoreTrendChart: React.FC<{ results: QuizResult[] }> = ({ results }) => {
-    const chartData = [...results].reverse(); // Reverse to show oldest to newest
+    // Calculate cumulative average scores
+    const sortedResults = [...results].reverse(); // Oldest to newest
+    let cumulativeScore = 0;
+    const chartData = sortedResults.map((result, index) => {
+        cumulativeScore += result.score;
+        return {
+            id: result.id,
+            score: Math.round(cumulativeScore / (index + 1)),
+        };
+    });
 
     return (
         <div className="bg-gray-900/50 p-4 rounded-lg">
@@ -46,7 +55,7 @@ const ScoreTrendChart: React.FC<{ results: QuizResult[] }> = ({ results }) => {
                             <div 
                                 className="w-full bg-indigo-500 rounded-t-md hover:bg-indigo-400 transition-colors duration-300" 
                                 style={{ height: `${result.score}%` }}
-                                title={`${index + 1}회차: ${result.score}점`}
+                                title={`${index + 1}회차 누적 평균: ${result.score}점`}
                             >
                             </div>
                             <p className="text-xs text-gray-400 mt-2 whitespace-nowrap">{index + 1}회차</p>
@@ -175,6 +184,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
         };
     });
   }, [userResults]);
+  
+  const finalCumulativeAverage = useMemo(() => {
+    if (userResults.length === 0) return 0;
+    const totalScore = userResults.reduce((acc, result) => acc + result.score, 0);
+    return Math.round(totalScore / userResults.length);
+  }, [userResults]);
 
 
   if (loading) {
@@ -206,8 +221,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
             <h2 className="text-xl font-semibold text-white">성적 추이 분석</h2>
             {userResults.length > 0 && (
                 <div className="text-sm text-gray-400">
-                    <span className="font-semibold">마지막 회차 점수: </span>
-                    <span className="font-bold text-indigo-400 text-lg">{userResults[0].score}점</span>
+                    <span className="font-semibold">현재 누적 평균: </span>
+                    <span className="font-bold text-indigo-400 text-lg">{finalCumulativeAverage}점</span>
                 </div>
             )}
         </div>
