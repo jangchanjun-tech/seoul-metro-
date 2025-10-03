@@ -1,19 +1,14 @@
-// FIX: Updated imports to use Firebase v8 namespaced API to resolve module resolution errors.
-import firebase from 'firebase/compat/app';
-import 'firebase/compat/firestore';
+import { collection, addDoc, serverTimestamp, writeBatch, doc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { QuizItem, User } from "../types";
 
 export const saveQuizResult = async (user: User, topic: string, quizData: QuizItem[], score: number) => {
-    if (!db) {
-        console.error("Firestore is not initialized.");
-        return;
-    }
     try {
-        const timestamp = firebase.firestore.FieldValue.serverTimestamp();
-
+        const timestamp = serverTimestamp();
+        
         // 1. Save the main quiz result with user's name
-        await db.collection("quizResults").add({
+        const quizResultsCollection = collection(db, "quizResults");
+        await addDoc(quizResultsCollection, {
             userId: user.uid,
             userName: user.displayName, // Store user's name/nickname
             topic: topic,
@@ -25,17 +20,16 @@ export const saveQuizResult = async (user: User, topic: string, quizData: QuizIt
         console.log("Quiz result saved successfully!");
 
         // 2. Archive all generated questions to a separate collection for analysis
-        const batch = db.batch();
-        const questionsCollection = db.collection("generatedQuestions");
+        const batch = writeBatch(db);
+        const questionsCollection = collection(db, "generatedQuestions");
 
         quizData.forEach(question => {
-            const questionDocRef = questionsCollection.doc(); // Auto-generate ID
+            // FIX: To create a document reference with an auto-generated ID in Firestore v9,
+            // you must use the `doc` function on the collection reference.
+            const questionDocRef = doc(questionsCollection); // Auto-generate ID
             batch.set(questionDocRef, {
-                // Spread the original quiz item
                 ...question,
-                // Add metadata
-                createdAt: timestamp, // Date information
-                // The "subject" is the competency
+                createdAt: timestamp,
                 createdBy: {
                     uid: user.uid,
                     name: user.displayName,

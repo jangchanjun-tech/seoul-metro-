@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
 import { generateQuizSetStream, getAIVerificationStream } from './services/geminiService';
 import { saveQuizResult } from './services/firebaseService';
 import { QuizItem, User } from './types';
@@ -26,17 +27,14 @@ const App: React.FC = () => {
   const [isVerifying, setIsVerifying] = useState(false);
   
   useEffect(() => {
-    if (auth) {
-        const unsubscribe = auth.onAuthStateChanged((currentUser) => {
-            setUser(currentUser ? { uid: currentUser.uid, displayName: currentUser.displayName, email: currentUser.email, photoURL: currentUser.photoURL } : null);
-        });
-        return () => unsubscribe();
-    }
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+        setUser(currentUser ? { uid: currentUser.uid, displayName: currentUser.displayName, email: currentUser.email, photoURL: currentUser.photoURL } : null);
+    });
+    return () => unsubscribe();
   }, []);
 
   const handleGenerateQuiz = useCallback(async () => {
-    // Use auth.currentUser for the most up-to-date login status
-    if (!auth?.currentUser) {
+    if (!auth.currentUser) {
       setIsAuthModalOpen(true);
       return;
     }

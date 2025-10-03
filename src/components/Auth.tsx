@@ -1,5 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import firebase from 'firebase/compat/app';
+import React, { useState } from 'react';
+import { 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  updateProfile,
+  signOut,
+  AuthError
+} from 'firebase/auth';
 import { auth } from '../firebase/config';
 import { User } from '../types';
 
@@ -15,15 +21,6 @@ const Auth: React.FC<AuthProps> = ({ user, isModalOpen, onToggleModal }) => {
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (auth) {
-        auth.setPersistence(firebase.auth.Auth.Persistence.NONE)
-          .catch((error) => {
-              console.error("Error setting auth persistence:", error);
-          });
-    }
-  }, []);
 
   const resetForm = () => {
     setEmail('');
@@ -42,14 +39,13 @@ const Auth: React.FC<AuthProps> = ({ user, isModalOpen, onToggleModal }) => {
 
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth) return;
     setError(null);
     try {
-      await auth.signInWithEmailAndPassword(email, password);
+      await signInWithEmailAndPassword(auth, email, password);
       handleCloseModal();
     } catch (err) {
       console.error("Email sign-in error:", err);
-      const firebaseError = err as any;
+      const firebaseError = err as AuthError;
       switch (firebaseError.code) {
           case 'auth/user-not-found':
           case 'auth/wrong-password':
@@ -67,21 +63,18 @@ const Auth: React.FC<AuthProps> = ({ user, isModalOpen, onToggleModal }) => {
 
   const handleEmailSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth) return;
     setError(null);
     if (!displayName.trim()) {
         setError('이름(닉네임)을 입력해주세요.');
         return;
     }
     try {
-      const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-      if (userCredential.user) {
-        await userCredential.user.updateProfile({ displayName });
-      }
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(userCredential.user, { displayName });
       handleCloseModal();
     } catch (err) {
         console.error("Email sign-up error:", err);
-        const firebaseError = err as any;
+        const firebaseError = err as AuthError;
         switch (firebaseError.code) {
             case 'auth/email-already-in-use':
                 setError('이미 사용 중인 이메일입니다.');
@@ -100,9 +93,8 @@ const Auth: React.FC<AuthProps> = ({ user, isModalOpen, onToggleModal }) => {
 
 
   const handleSignOut = async () => {
-    if (!auth) return;
     try {
-      await auth.signOut();
+      await signOut(auth);
     } catch (error) {
       console.error("Sign out error:", error);
     }
