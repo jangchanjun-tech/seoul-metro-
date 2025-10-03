@@ -70,7 +70,7 @@ const QuizCard: React.FC<QuizCardProps> = ({ quizItem, questionIndex, userAnswer
         <p className="text-gray-300 whitespace-pre-wrap leading-relaxed bg-gray-900/50 p-4 rounded-md border border-gray-700">{quizItem.passage}</p>
       </div>
       
-      <h3 className="text-xl font-bold mb-4 text-indigo-300">
+      <h3 className="text-2xl font-bold mb-4 text-indigo-300">
         <span className="text-gray-400 mr-2">{questionIndex + 1}.</span>
         {quizItem.question}
       </h3>
