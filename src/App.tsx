@@ -371,8 +371,36 @@ const App: React.FC = () => {
         </div>
       );
     }
+
+    const ResultsSummaryBlock = ({ showHomeButton = false }: { showHomeButton?: boolean }) => (
+      <div className="text-center bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6 animate-fade-in">
+          <h2 className="text-2xl font-bold text-indigo-300">최종 결과</h2>
+          <div className="flex justify-center items-center gap-8 my-4">
+              <div>
+                  <p className="text-sm text-gray-400 uppercase tracking-wider">총 소요 시간</p>
+                  <p className="text-3xl font-bold text-white font-mono">{formatTime(elapsedTime)}</p>
+              </div>
+              <div className="border-l border-gray-600 h-16"></div>
+              <div>
+                  <p className="text-sm text-gray-400 uppercase tracking-wider">최종 점수</p>
+                  <p className="text-4xl font-extrabold">
+                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-teal-400">{calculateScore()}</span>
+                      <span className="text-xl text-gray-400"> 점</span>
+                  </p>
+              </div>
+          </div>
+          {showHomeButton && (
+            <button onClick={handleGoHome} className="mt-4 bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all">
+              홈으로 돌아가기
+            </button>
+          )}
+      </div>
+    );
+
     return (
       <div className="space-y-4">
+        {showResults && <ResultsSummaryBlock />}
+
         {quizData.map((item, index) => (
           <QuizCard
             key={item.id}
@@ -391,28 +419,7 @@ const App: React.FC = () => {
               결과 확인하기 {user && '(결과가 저장됩니다)'}
             </button>
         )}
-        {showResults && (
-          <div className="text-center bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6 animate-fade-in">
-              <h2 className="text-2xl font-bold text-indigo-300">최종 결과</h2>
-              <div className="flex justify-center items-center gap-8 my-4">
-                  <div>
-                      <p className="text-sm text-gray-400 uppercase tracking-wider">총 소요 시간</p>
-                      <p className="text-3xl font-bold text-white font-mono">{formatTime(elapsedTime)}</p>
-                  </div>
-                  <div className="border-l border-gray-600 h-16"></div>
-                  <div>
-                      <p className="text-sm text-gray-400 uppercase tracking-wider">최종 점수</p>
-                      <p className="text-4xl font-extrabold">
-                          <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-teal-400">{calculateScore()}</span>
-                          <span className="text-xl text-gray-400"> 점</span>
-                      </p>
-                  </div>
-              </div>
-              <button onClick={handleGoHome} className="mt-4 bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all">
-                홈으로 돌아가기
-              </button>
-          </div>
-        )}
+        {showResults && <ResultsSummaryBlock showHomeButton={true} />}
       </div>
     );
   }
