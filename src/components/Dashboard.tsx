@@ -84,8 +84,8 @@ const Bar = ({ value, color, label }: { value: number; color: string; label: str
 const getPerformanceColorStyle = (score: number, min: number, max: number, hasAttempts: boolean): React.CSSProperties => {
     if (!hasAttempts || max === min) return {};
     const normalized = (score - min) / (max - min);
-    // Hue: 0 is red, 220 is a nice blue. We go from 220 (blue) down to 0 (red).
-    const hue = 220 - (normalized * 220); 
+    // Hue: 0 is red (worst score), 220 is a nice blue (best score).
+    const hue = normalized * 220; 
     return { 
         backgroundColor: `hsla(${hue}, 60%, 20%, 0.4)`,
         borderColor: `hsla(${hue}, 60%, 40%, 0.5)`
@@ -95,7 +95,7 @@ const getPerformanceColorStyle = (score: number, min: number, max: number, hasAt
 const getPerformanceTextStyle = (score: number, min: number, max: number, hasAttempts: boolean): React.CSSProperties => {
     if (!hasAttempts || max === min) return {};
     const normalized = (score - min) / (max - min);
-    const hue = 220 - (normalized * 220);
+    const hue = normalized * 220;
     return { color: `hsl(${hue}, 70%, 65%)` };
 };
 
