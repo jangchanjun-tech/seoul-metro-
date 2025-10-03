@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { generateSingleQuiz, getAIVerification, shuffleArray } from './services/geminiService';
 import { saveQuizResult } from './services/firebaseService';
@@ -26,6 +26,7 @@ const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>('home');
   const [verificationResults, setVerificationResults] = useState<Record<number, string>>({});
   const [isVerifying, setIsVerifying] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
   
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -33,6 +34,33 @@ const App: React.FC = () => {
     });
     return () => unsubscribe();
   }, []);
+  
+  useEffect(() => {
+    const handleContextmenu = (e: MouseEvent) => e.preventDefault();
+    const handleKeydown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && ['c', 'p', 's'].includes(e.key.toLowerCase())) {
+        e.preventDefault();
+      }
+      if (e.key === 'PrintScreen') {
+        e.preventDefault();
+      }
+    };
+
+    const mainElement = mainRef.current;
+    if (appState === 'quiz' && mainElement) {
+      mainElement.style.userSelect = 'none';
+      document.addEventListener('contextmenu', handleContextmenu);
+      document.addEventListener('keydown', handleKeydown);
+    }
+
+    return () => {
+      if (mainElement) {
+        mainElement.style.userSelect = 'auto';
+      }
+      document.removeEventListener('contextmenu', handleContextmenu);
+      document.removeEventListener('keydown', handleKeydown);
+    };
+  }, [appState]);
 
   const handleGenerateQuiz = useCallback(async () => {
     if (!auth.currentUser) {
@@ -99,6 +127,11 @@ const App: React.FC = () => {
 
   const handleShowResults = async () => {
     setShowResults(true);
+
+    if (mainRef.current) {
+      mainRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+
     const finalScore = calculateScore();
     if (user && quizData.length > 0) {
       await saveQuizResult(user, "AI 실시간 모의고사", quizData, finalScore);
@@ -217,7 +250,7 @@ const App: React.FC = () => {
             </div>
         </header>
 
-        <main>
+        <main ref={mainRef}>
           {renderContent()}
         </main>
       </div>

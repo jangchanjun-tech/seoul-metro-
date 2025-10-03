@@ -54,7 +54,7 @@ const quizItemSchema = {
         },
         explanation: {
             type: Type.STRING,
-            description: "최선 답변 2가지가 왜 정답인지 해당 역량과 연관지어 상세히 해설."
+            description: "5개 선택지 각각에 대해 왜 그것이 '최선', '차선', 또는 '최악'인지, 평가 역량과 연관지어 상세히 해설. 각 해설은 명확히 구분되어야 함."
         }
     },
     required: ["competency", "passage", "question", "options", "bestAnswers", "secondBestAnswers", "worstAnswer", "explanation"],
@@ -78,7 +78,7 @@ export const generateSingleQuiz = async (competency: string): Promise<QuizItem> 
     *   'bestAnswers' 필드에는 2개의 '최선' 선택지를 담은 배열을 제공해야 합니다.
     *   'secondBestAnswers' 필드에는 2개의 '차선' 선택지를 담은 배열을 제공해야 합니다.
     *   'worstAnswer' 필드에는 1개의 '최악' 선택지를 담은 문자열을 제공해야 합니다.
-    *   'explanation' 필드에는 왜 그 2가지 행동이 최선인지, 평가하는 역량과 서울교통공사의 핵심가치를 연결하여 상세하게 해설해야 합니다.
+    *   'explanation' 필드에는, 5개의 모든 선택지에 대해 각각 왜 '최선', '차선', 또는 '최악'인지, 평가하는 역량과 서울교통공사의 핵심가치를 연결하여 상세하게 해설해야 합니다. **각 선택지에 대한 해설은 명확하게 구분하여 작성해주십시오.**
 
 이제, 위 모든 조건을 준수하여 새로운 문제를 생성해 주십시오.`;
 
@@ -107,7 +107,7 @@ export const generateSingleQuiz = async (competency: string): Promise<QuizItem> 
 
 export const getAIVerification = async (quizItem: QuizItem): Promise<string> => {
     try {
-        const { passage, question, bestAnswers, explanation, competency } = quizItem;
+        const { passage, question, bestAnswers, secondBestAnswers, worstAnswer, explanation, competency } = quizItem;
         const systemInstruction = `당신은 AI가 생성한 교육 콘텐츠를 검증하는 고도로 숙련된 품질 관리 전문가입니다. 당신의 목표는 객관적이고, 비판적인 시각으로 주어진 문제와 해설의 논리적 타당성, 일관성, 교육적 가치를 평가하는 것입니다.`;
         const prompt = `
             다음은 '서울교통공사 역량평가' 모의고사 문제입니다. 이 문제와 해설을 전문가의 입장에서 검증하고, 그 결과를 "AI 검증 결과"로 요약해 주십시오.
@@ -116,13 +116,14 @@ export const getAIVerification = async (quizItem: QuizItem): Promise<string> => 
             - **평가 역량**: ${competency}
             - **상황 지문**: ${passage}
             - **질문**: ${question}
-            - **제시된 정답 (최선 행동 2가지)**: 
-              1. ${bestAnswers[0]}
-              2. ${bestAnswers[1]}
-            - **정답 해설**: ${explanation}
+            - **선택지 분류**:
+              - 최선: ${bestAnswers.join(', ')}
+              - 차선: ${secondBestAnswers.join(', ')}
+              - 최악: ${worstAnswer}
+            - **종합 해설**: ${explanation}
 
             ### 검증 및 결과 작성 가이드라인 ###
-            1.  **핵심 검증 포인트**: 정답으로 제시된 행동 2가지가 주어진 상황에서 정말 '최선'인지, 그리고 해설이 그 이유를 '평가 역량'과 논리적으로 잘 연결하여 설명하고 있는지 검증하십시오.
+            1.  **핵심 검증 포인트**: 각 선택지의 '최선/차선/최악' 분류가 타당한지, 그리고 종합 해설이 각 선택지에 대한 설명을 논리적으로 잘 풀어내고 있는지 검증하십시오.
             2.  **결과 톤앤매너**: 간결하고 명확하게, 전문가적인 어조를 사용하십시오.
             3.  **결과 형식**: 최종 결과물은 한두 문장의 짧은 단락으로 구성되어야 합니다.
             

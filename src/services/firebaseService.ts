@@ -4,8 +4,6 @@ import { QuizItem, User, QuizResult } from "../types";
 
 export const saveQuizResult = async (user: User, topic: string, quizData: QuizItem[], score: number) => {
     try {
-        // serverTimestamp() is now called directly when setting the field value
-        
         // 1. Save the main quiz result
         const quizResultsCollection = collection(db, "quizResults");
         await addDoc(quizResultsCollection, {
@@ -15,7 +13,7 @@ export const saveQuizResult = async (user: User, topic: string, quizData: QuizIt
             quizData: quizData,
             score: score,
             totalQuestions: quizData.length,
-            createdAt: serverTimestamp() // Correct usage
+            createdAt: serverTimestamp()
         });
         console.log("Quiz result saved successfully!");
 
@@ -23,12 +21,22 @@ export const saveQuizResult = async (user: User, topic: string, quizData: QuizIt
         const batch = writeBatch(db);
 
         quizData.forEach(question => {
-            const competencyQuestionsCollection = collection(db, "generatedQuestions", question.competency, "questions");
-            const questionDocRef = doc(competencyQuestionsCollection); 
+            // Path to the competency document e.g. /generatedQuestions/지휘감독능력
+            const competencyDocRef = doc(db, "generatedQuestions", question.competency);
+
+            // Ensure the competency document exists. Using { merge: true } prevents
+            // overwriting if other metadata is added later. This makes the structure robust.
+            batch.set(competencyDocRef, {
+                name: question.competency,
+                lastUpdated: serverTimestamp()
+            }, { merge: true });
+            
+            // Path to a new document in the subcollection e.g. /generatedQuestions/지휘감독능력/questions/<auto-id>
+            const questionDocRef = doc(collection(competencyDocRef, 'questions'));
 
             batch.set(questionDocRef, {
                 ...question,
-                createdAt: serverTimestamp(), // Correct usage
+                createdAt: serverTimestamp(),
                 createdBy: {
                     uid: user.uid,
                     name: user.displayName,
@@ -48,15 +56,25 @@ export const saveQuizResult = async (user: User, topic: string, quizData: QuizIt
 export const getUserQuizResults = async (userId: string): Promise<QuizResult[]> => {
     try {
         const results: QuizResult[] = [];
+        // FIX: Removed orderBy from the query to prevent composite index errors.
+        // Sorting will be handled on the client side after fetching.
         const q = query(
             collection(db, "quizResults"),
-            where("userId", "==", userId),
-            orderBy("createdAt", "desc")
+            where("userId", "==", userId)
         );
         const querySnapshot = await getDocs(q);
         querySnapshot.forEach((doc) => {
             results.push({ id: doc.id, ...doc.data() } as QuizResult);
         });
+
+        // Sort results by date on the client side
+        results.sort((a, b) => {
+            if (a.createdAt && b.createdAt) {
+                return b.createdAt.toMillis() - a.createdAt.toMillis();
+            }
+            return 0;
+        });
+
         return results;
     } catch (error) {
         console.error("Error fetching user quiz results:", error);

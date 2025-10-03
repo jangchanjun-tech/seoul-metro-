@@ -52,7 +52,7 @@ const QuizCard: React.FC<QuizCardProps> = ({ quizItem, questionIndex, userAnswer
     return 'bg-gray-700 opacity-60'; // 그 외
   };
 
-  const isCorrect = showResults && quizItem.bestAnswers.every(answer => userAnswers.includes(answer)) && userAnswers.every(answer => quizItem.bestAnswers.includes(answer));
+  const isCorrect = showResults && quizItem.bestAnswers.length === userAnswers.length && quizItem.bestAnswers.every(ba => userAnswers.includes(ba));
 
   return (
     <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl shadow-lg p-6 animate-fade-in">
@@ -110,7 +110,7 @@ const QuizCard: React.FC<QuizCardProps> = ({ quizItem, questionIndex, userAnswer
           </div>
           <hr className="my-3 border-gray-600" />
           <div>
-            <h4 className="font-semibold text-indigo-300 mb-2">해설</h4>
+            <h4 className="font-semibold text-indigo-300 mb-2">상세 해설</h4>
             <p className="text-gray-300 whitespace-pre-wrap">{quizItem.explanation}</p>
           </div>
           <hr className="my-3 border-gray-600" />
