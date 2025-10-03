@@ -2,7 +2,7 @@ import { collection, addDoc, serverTimestamp, writeBatch, doc, getDocs, query, w
 import { db } from '../firebase/config';
 import { QuizItem, User, QuizResult, SystemStats } from "../types";
 
-export const saveQuizResult = async (user: User, topic: string, quizData: QuizItem[], score: number) => {
+export const saveQuizResult = async (user: User, topic: string, quizData: QuizItem[], userAnswers: Record<number, string[]>, score: number) => {
     try {
         const quizResultsCollection = collection(db, "quizResults");
         await addDoc(quizResultsCollection, {
@@ -10,14 +10,14 @@ export const saveQuizResult = async (user: User, topic: string, quizData: QuizIt
             userName: user.displayName,
             topic: topic,
             quizData: quizData,
+            userAnswers: userAnswers, // 사용자 답변 저장
             score: score,
             totalQuestions: quizData.length,
             createdAt: serverTimestamp()
         });
-        console.log("Quiz result saved successfully!");
-    // FIX: Corrected a syntax error in the catch block. It was missing curly braces and was improperly formatted.
+        console.log("사용자 답변을 포함한 시험 결과가 성공적으로 저장되었습니다!");
     } catch (error) {
-        console.error("Error saving quiz result to Firestore: ", error);
+        console.error("시험 결과 저장 중 오류 발생: ", error);
     }
 };
 
@@ -113,6 +113,7 @@ export const saveNewQuestions = async (questions: Omit<QuizItem, 'id'>[]): Promi
         savedQuestions.push({ ...question, id: docRef.id });
 
         const competencyKey = question.competency as keyof SystemStats;
+        if (!statsUpdate[competencyKey]) statsUpdate[competencyKey] = increment(0);
         statsUpdate[competencyKey] = increment(1);
     });
 
@@ -165,7 +166,21 @@ export const saveSingleQuestionToBank = async (question: QuizItem): Promise<void
     batch.set(questionRef, question);
 
     const statsRef = doc(db, 'systemStats', 'counts');
-    batch.update(statsRef, statsUpdate);
+    // Ensure the stats doc exists before updating
+    const statsDoc = await getDoc(statsRef);
+    if(statsDoc.exists()){
+        batch.update(statsRef, statsUpdate);
+    } else {
+        batch.set(statsRef, {
+            total: 1,
+            지휘감독능력: competencyKey === '지휘감독능력' ? 1 : 0,
+            '책임감 및 적극성': competencyKey === '책임감 및 적극성' ? 1 : 0,
+            '관리자로서의 자세 및 청렴도': competencyKey === '관리자로서의 자세 및 청렴도' ? 1 : 0,
+            '경영의식 및 혁신성': competencyKey === '경영의식 및 혁신성' ? 1 : 0,
+            '업무의 이해도 및 상황대응력': competencyKey === '업무의 이해도 및 상황대응력' ? 1 : 0,
+        });
+    }
+
 
     await batch.commit();
 };

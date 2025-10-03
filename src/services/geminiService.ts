@@ -1,7 +1,7 @@
 // src/services/geminiService.ts
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { QuizItem } from '../types';
+import { QuizItem, QuizResult, SystemStats, CompetencyAnalysis } from '../types';
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
@@ -143,5 +143,68 @@ export const getAIVerification = async (quizItem: QuizItem): Promise<string> => 
     } catch (error) {
         console.error("AI Verification 호출 중 오류 발생:", error);
         return "해설 검증 중 오류가 발생했습니다.";
+    }
+};
+
+const analysisSchema = {
+    type: Type.OBJECT,
+    properties: {
+        지휘감독능력: { type: Type.STRING },
+        '책임감 및 적극성': { type: Type.STRING },
+        '관리자로서의 자세 및 청렴도': { type: Type.STRING },
+        '경영의식 및 혁신성': { type: Type.STRING },
+        '업무의 이해도 및 상황대응력': { type: Type.STRING },
+    },
+    required: ['지휘감독능력', '책임감 및 적극성', '관리자로서의 자세 및 청렴도', '경영의식 및 혁신성', '업무의 이해도 및 상황대응력'],
+};
+
+export const generateCompetencyAnalysis = async (userResults: QuizResult[]): Promise<CompetencyAnalysis> => {
+    const systemInstruction = `당신은 데이터 기반의 HR 역량 분석 전문가입니다. 당신의 임무는 응시자의 모의고사 결과를 분석하여, 5가지 핵심 역량에 대한 강점과 약점을 진단하고, 다른 응시자들과 비교하여 건설적인 피드백을 제공하는 것입니다. 분석은 반드시 데이터에 기반해야 하며, 긍정적이고 성장을 독려하는 어조를 사용해야 합니다.`;
+
+    // 데이터 요약 및 가공
+    const summary = userResults.flatMap(result =>
+        result.quizData.map((item, index) => {
+            const userAnswers = result.userAnswers ? result.userAnswers[index] : [];
+            if (!userAnswers) return null;
+            return {
+                competency: item.competency,
+                userChoices: userAnswers,
+                best: item.bestAnswers,
+                secondBest: item.secondBestAnswers,
+                worst: item.worstAnswer,
+            };
+        }).filter(Boolean)
+    ).slice(0, 30); // 너무 긴 프롬프트를 막기 위해 최근 30개 문제로 제한
+
+    const prompt = `
+        다음은 한 응시자의 서울교통공사 역량평가 모의고사 응시 기록 요약입니다. 이 데이터를 바탕으로, 각 5가지 핵심 역량에 대한 종합적인 상황판단 역량을 평가하고, 다른 응시자들과 비교 분석하여 결과를 제시해주십시오.
+
+        ### 응시 기록 데이터 (${summary.length}개 문제) ###
+        ${JSON.stringify(summary, null, 2)}
+
+        ### 분석 및 결과 작성 가이드라인 ###
+        1.  **종합 분석**: 각 역량에 대해, 응시자의 답변 패턴을 분석하십시오. (예: '최선'의 선택을 꾸준히 하는지, '최악'의 선택을 피하는 경향이 있는지, 특정 유형의 상황에서 강점/약점을 보이는지 등)
+        2.  **비교 분석**: 분석 결과를 바탕으로, "다른 응시자들과 비교했을 때, ~한 경향을 보입니다." 와 같이 상대적인 위치를 언급해주십시오.
+        3.  **결과 형식**: 최종 결과물은 5개 역량의 이름을 key로, 분석 내용을 value로 하는 JSON 객체여야 합니다. 각 분석 내용은 2~3문장의 완성된 단락으로 작성하십시오.
+
+        이제, 위 모든 가이드라인을 준수하여 이 응시자에 대한 역량 분석 결과를 JSON 형식으로 작성해 주십시오.
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: {
+                systemInstruction,
+                temperature: 0.7,
+                responseMimeType: 'application/json',
+                responseSchema: analysisSchema,
+            },
+        });
+        const jsonText = response.text.trim();
+        return JSON.parse(jsonText) as CompetencyAnalysis;
+    } catch (error) {
+        console.error("AI 역량 분석 생성 중 오류:", error);
+        throw new Error("AI 역량 분석 리포트를 생성하는 데 실패했습니다.");
     }
 };

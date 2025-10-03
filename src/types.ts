@@ -1,3 +1,5 @@
+// src/types.ts
+
 import { Timestamp } from "firebase/firestore";
 
 export interface QuizItem {
@@ -25,7 +27,9 @@ export interface QuizResult {
   userId: string;
   userName: string;
   topic: string;
-  quizData: QuizItem[]; // Keep for simplicity in dashboard, could be replaced by questionIds
+  quizData: QuizItem[];
+  // 사용자의 답변을 저장하여 역량별 점수 재계산이 가능하도록 함
+  userAnswers?: Record<number, string[]>;
   score: number;
   totalQuestions: number;
   createdAt: Timestamp | null;
@@ -39,6 +43,10 @@ export interface SystemStats {
     '경영의식 및 혁신성': number;
     '업무의 이해도 및 상황대응력': number;
 }
+
+export type CompetencyAnalysis = {
+    [key in keyof Omit<SystemStats, 'total'>]: string;
+};
 
 
 // Add manual type definitions for Vite environment variables

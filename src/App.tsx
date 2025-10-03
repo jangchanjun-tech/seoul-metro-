@@ -35,11 +35,7 @@ const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
     const [stats, setStats] = useState<SystemStats | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
-    const isGeneratingRef = useRef(isGenerating);
-
-    useEffect(() => {
-        isGeneratingRef.current = isGenerating;
-    }, [isGenerating]);
+    const generationWorkers = useRef<boolean[]>([]);
 
     const addLog = useCallback((message: string) => {
         setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${message}`, ...prev].slice(0, 100));
@@ -57,21 +53,20 @@ const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
         return () => clearInterval(interval);
     }, [fetchStats]);
 
-    const startGeneration = () => {
+    const startGeneration = useCallback(() => {
         addLog(`${CONCURRENT_GENERATIONS}개의 병렬 프로세스로 문제 생성을 시작합니다...`);
         setIsGenerating(true);
-        isGeneratingRef.current = true;
+        generationWorkers.current = Array(CONCURRENT_GENERATIONS).fill(true);
 
         const generationLoop = async (workerId: number) => {
-            if (!isGeneratingRef.current) {
-                if(workerId === 1) addLog("모든 생성 프로세스를 중단합니다.");
+            if (!generationWorkers.current[workerId - 1]) {
                 return;
             }
 
-            const currentStats = await getSystemStats(); // Get latest stats inside loop
+            const currentStats = await getSystemStats();
             if (currentStats.total >= 50000) {
                 if(workerId === 1) addLog("목표 50,000개에 도달하여 생성을 자동 중단합니다.");
-                setIsGenerating(false);
+                stopGeneration();
                 return;
             }
             
@@ -79,7 +74,7 @@ const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
 
             if (underfilledCompetencies.length === 0) {
                 if(workerId === 1) addLog("모든 역량이 10,000개를 달성했습니다. 생성을 중단합니다.");
-                setIsGenerating(false);
+                stopGeneration();
                 return;
             }
             
@@ -94,19 +89,20 @@ const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
                 addLog(`[Worker ${workerId}] 오류: 생성 실패. ${error instanceof Error ? error.message.substring(0, 50) : '알 수 없는 오류'}`);
             }
 
-            setTimeout(() => generationLoop(workerId), 1000 * workerId); // Stagger API calls slightly
+            // Loop
+            setTimeout(() => generationLoop(workerId), 1000 * Math.random() * workerId); 
         };
 
-        // Start multiple generation loops in parallel
         for (let i = 1; i <= CONCURRENT_GENERATIONS; i++) {
             generationLoop(i);
         }
-    };
+    }, [addLog]);
 
-    const stopGeneration = () => {
+    const stopGeneration = useCallback(() => {
+        addLog("모든 생성 프로세스 중단을 요청합니다...");
         setIsGenerating(false);
-        isGeneratingRef.current = false;
-    };
+        generationWorkers.current = Array(CONCURRENT_GENERATIONS).fill(false);
+    }, [addLog]);
 
     return (
         <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700 animate-fade-in">
@@ -209,27 +205,28 @@ const App: React.FC = () => {
 
         console.log("지능형 하이브리드 문제 출제를 시작합니다...");
 
-        // 각 역량별로 2문제씩 생성 (은행 1 + AI 1 시도, 실패 시 AI 2)
+        // 각 역량별로 2문제씩 생성
         const generationPromises = COMPETENCIES.map(async (competency) => {
-            // 1. 문제 은행에서 1문제 가져오기 시도
-            const bankQuestions = await fetchBankQuestions(competency, 1, seenIds);
-            const questions: QuizItem[] = [...bankQuestions];
+            let questionsForCompetency: QuizItem[] = [];
             
+            // 1. 문제 은행에서 가져오기 시도
+            const bankQuestions = await fetchBankQuestions(competency, 1, seenIds);
+            questionsForCompetency.push(...bankQuestions);
+
             // 2. 부족한 만큼 AI로 생성
             const neededFromAI = 2 - bankQuestions.length;
             if (neededFromAI > 0) {
-                console.log(`'${competency}' 역량: 은행 ${bankQuestions.length}개, AI ${neededFromAI}개 생성 필요.`);
+                console.log(`'${competency}': 은행 ${bankQuestions.length}개, AI ${neededFromAI}개 생성.`);
                 const aiPromises = Array.from({ length: neededFromAI }, () => generateSingleQuiz(competency));
                 const newAiQuestions = await Promise.all(aiPromises);
-                questions.push(...newAiQuestions);
+                questionsForCompetency.push(...newAiQuestions);
             }
-            return questions;
+            return questionsForCompetency;
         });
 
         const questionsPerCompetency = await Promise.all(generationPromises);
         const allQuestionsRaw = questionsPerCompetency.flat();
         
-        // 3. 새로 생성된 문제만 필터링하여 은행에 저장
         const newQuestionsToSave = allQuestionsRaw.filter(q => !q.id);
 
         let finalQuizSet = allQuestionsRaw;
@@ -237,13 +234,12 @@ const App: React.FC = () => {
         if (newQuestionsToSave.length > 0) {
             console.log(`${newQuestionsToSave.length}개의 새로운 문제를 생성하여 문제 은행에 저장합니다...`);
             const savedNewQuestions = await saveNewQuestions(newQuestionsToSave);
-            // ID가 부여된 저장된 문제로 교체
             const bankQuestionsInSet = allQuestionsRaw.filter(q => q.id);
             finalQuizSet = [...bankQuestionsInSet, ...savedNewQuestions];
         }
         
-        if (finalQuizSet.length < 10) {
-            throw new Error(`최종 문제 생성 중 오류가 발생하여 10개를 모두 준비하지 못했습니다.`);
+        if (finalQuizSet.length !== 10) {
+             console.warn(`생성된 문제 수가 10개가 아닙니다: ${finalQuizSet.length}개`);
         }
 
         setQuizData(shuffleArray(finalQuizSet).map(q => ({...q, options: shuffleArray(q.options)})));
@@ -266,7 +262,7 @@ const App: React.FC = () => {
 
   const calculateScore = useCallback(() => {
     let totalPoints = 0;
-    const maxPointsPerQuestion = 6;
+    const maxPointsPerQuestion = 6; // best(3) + best(3)
     quizData.forEach((item, index) => {
         const userSelection = userAnswers[index] || [];
         userSelection.forEach(answer => {
@@ -285,7 +281,7 @@ const App: React.FC = () => {
 
     const finalScore = calculateScore();
     if (user && quizData.length > 0) {
-      await saveQuizResult(user, "AI 하이브리드 모의고사", quizData, finalScore);
+      await saveQuizResult(user, "AI 하이브리드 모의고사", quizData, userAnswers, finalScore);
       const questionIdsToUpdate = quizData.map(q => q.id).filter((id): id is string => !!id);
       await updateSeenQuestions(user.uid, questionIdsToUpdate);
     }
