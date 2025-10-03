@@ -210,18 +210,20 @@ const App: React.FC = () => {
         // --- Phase 1: Fetch from Bank (Fast Path) ---
         console.log("1단계: 문제 은행에서 5문제 즉시 로딩 시작...");
         const bankQuestions = await fetchInitialBankSet(COMPETENCIES, seenIds);
-        setQuizData(shuffleArray(bankQuestions).map(q => ({...q, options: shuffleArray(q.options)})));
+        // FIX: Do not shuffle the main question list to maintain a stable order.
+        setQuizData(bankQuestions.map(q => ({...q, options: shuffleArray(q.options)})));
         setIsLoading(false); // Hide main loader and show initial questions
         console.log(`1단계 완료: ${bankQuestions.length}개의 문제를 즉시 표시했습니다.`);
 
         // --- Phase 2: Generate from AI (Slow Path, in background) ---
         setIsGeneratingMore(true);
-        console.log("2단계: AI로 나머지 5문제 백그라운드 생성 시작...");
+        console.log("2단계: AI로 나머지 5문제 백라운드 생성 시작...");
 
         const aiPromises = COMPETENCIES.map(competency => 
             generateSingleQuiz(competency).then(newQuestion => {
-                // This is the "streaming" part - update UI as questions arrive
-                setQuizData(prevData => shuffleArray([...prevData, {...newQuestion, options: shuffleArray(newQuestion.options)}]));
+                // "stream" in the new question by appending it to the list
+                // FIX: Do not shuffle the array. Just append the new question to maintain stable order.
+                setQuizData(prevData => [...prevData, {...newQuestion, options: shuffleArray(newQuestion.options)}]);
                 return newQuestion;
             })
         );
@@ -233,11 +235,12 @@ const App: React.FC = () => {
         if (newQuestionsFromAI.length > 0) {
             console.log("3단계: 새로 생성된 문제를 문제 은행에 저장합니다...");
             const savedQuestions = await saveNewQuestions(newQuestionsFromAI);
-            // Update state with questions that now have a Firestore ID
+            // Update state with questions that now have a Firestore ID, preserving order
             setQuizData(prevData => {
                 const dataMap = new Map(prevData.map(q => [q.question, q]));
                 savedQuestions.forEach(sq => dataMap.set(sq.question, sq));
-                return shuffleArray(Array.from(dataMap.values()));
+                // FIX: Do not shuffle the array after updating IDs to maintain stable order.
+                return Array.from(dataMap.values());
             });
             console.log("3단계 완료: 저장이 완료되었습니다.");
         }
