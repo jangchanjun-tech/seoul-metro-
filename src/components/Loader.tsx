@@ -5,7 +5,7 @@ interface LoaderProps {
 }
 
 const Loader: React.FC<LoaderProps> = ({ message }) => {
-  const defaultMessage = "AI가 실전 모의고사를 생성하고 있습니다. 잠시만 기다려주세요...";
+  const defaultMessage = "AI가 역량평가 문제를 생성하고 있습니다. 잠시만 기다려주세요...";
   
   return (
     <div className="flex flex-col items-center justify-center space-y-4 py-16">

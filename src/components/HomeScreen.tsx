@@ -70,7 +70,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStartQuiz, isLoading }) => {
                 disabled={isLoading}
                 className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold py-4 px-6 rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-xl shadow-lg hover:shadow-indigo-500/50 transform hover:scale-105"
             >
-                {isLoading ? '모의고사 생성 중...' : '실전 모의고사 시작하기'}
+                {isLoading ? '역량평가 생성 중...' : '역량평가 시작하기'}
             </button>
         </div>
     </div>

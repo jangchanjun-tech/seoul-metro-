@@ -45,7 +45,7 @@ const GuideModal: React.FC<GuideModalProps> = ({ onClose }) => {
         <div className="space-y-5 text-gray-300 text-left leading-relaxed">
           <div className="flex items-start">
             <span className="bg-indigo-600 text-white rounded-full w-6 h-6 flex-shrink-0 flex items-center justify-center font-bold mr-3">1</span>
-            <p><strong>AI 실시간 문제 생성</strong>: '모의고사 시작하기' 버튼을 누르면, <strong>출제 전문 AI</strong>가 실시간으로 10개의 고난도 상황판단 문제를 생성합니다. 각 역량별 문제가 병렬로 생성되어 빠르고 효율적입니다.</p>
+            <p><strong>'역량평가 시작하기'</strong> 버튼을 누르면, <strong>출제 전문 AI</strong>가 실시간으로 10개의 고난도 상황판단 문제를 생성합니다. 각 역량별 문제가 병렬로 생성되어 빠르고 효율적입니다.</p>
           </div>
           <div className="flex items-start">
             <span className="bg-indigo-600 text-white rounded-full w-6 h-6 flex-shrink-0 flex items-center justify-center font-bold mr-3">2</span>
