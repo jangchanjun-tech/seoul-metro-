@@ -64,7 +64,7 @@ const ScoreTrendChart: React.FC<{ results: QuizResult[] }> = ({ results }) => {
 
 const Bar = ({ value, color, label }: { value: number; color: string; label: string; }) => (
     <div className="flex flex-col items-center w-[45%]">
-        <div className="w-full h-full bg-gray-700/50 rounded-t-md flex items-end relative">
+        <div className="w-full h-20 bg-gray-700/50 rounded-t-md flex items-end relative">
             <div className={`${color} w-full rounded-t-md transition-all duration-500 ease-out`} style={{ height: `${value}%` }} title={`${label}: ${value}점`}></div>
             <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-sm font-semibold text-white">{value}</span>
         </div>
