@@ -1,11 +1,10 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { QuizItem } from '../types';
 
-// FIX: Switched from import.meta.env to process.env to resolve errors and align with guidelines.
+// FIX: Per coding guidelines, the Gemini API key must be retrieved from process.env.API_KEY.
 const apiKey = process.env.API_KEY;
 
 if (!apiKey) {
-  // FIX: Updated error message to be more general.
   throw new Error("API_KEY is not set. Please add it to your environment variables in your deployment settings.");
 }
 

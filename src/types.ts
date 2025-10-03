@@ -15,19 +15,28 @@ export interface User {
   photoURL: string | null;
 }
 
-// FIX: Add global type definitions for process.env to support environment variables.
-// This makes process.env variables available to TypeScript for type checking.
-// The execution environment is expected to provide these values.
+// FIX: Add manual type definitions for Vite environment variables
+// This resolves errors related to 'import.meta.env' not being recognized by TypeScript.
 declare global {
+  // Add NodeJS namespace for process.env typing to be used for the Gemini API Key.
   namespace NodeJS {
     interface ProcessEnv {
-      API_KEY: string;
-      FIREBASE_API_KEY: string;
-      FIREBASE_AUTH_DOMAIN: string;
-      FIREBASE_PROJECT_ID: string;
-      FIREBASE_STORAGE_BUCKET: string;
-      FIREBASE_MESSAGING_SENDER_ID: string;
-      FIREBASE_APP_ID: string;
+      readonly API_KEY: string;
     }
+  }
+
+  // Define types for Vite's `import.meta.env` used for Firebase config.
+  interface ImportMetaEnv {
+    readonly VITE_GEMINI_API_KEY: string;
+    readonly VITE_FIREBASE_API_KEY: string;
+    readonly VITE_FIREBASE_AUTH_DOMAIN: string;
+    readonly VITE_FIREBASE_PROJECT_ID: string;
+    readonly VITE_FIREBASE_STORAGE_BUCKET: string;
+    readonly VITE_FIREBASE_MESSAGING_SENDER_ID: string;
+    readonly VITE_FIREBASE_APP_ID: string;
+  }
+
+  interface ImportMeta {
+    readonly env: ImportMetaEnv;
   }
 }
