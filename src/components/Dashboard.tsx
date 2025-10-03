@@ -190,6 +190,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
     const totalScore = userResults.reduce((acc, result) => acc + result.score, 0);
     return Math.round(totalScore / userResults.length);
   }, [userResults]);
+  
+  const latestScore = useMemo(() => {
+    return userResults.length > 0 ? userResults[0].score : 0;
+  }, [userResults]);
 
 
   if (loading) {
@@ -218,11 +222,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
       
       <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700">
         <div className="flex justify-between items-baseline mb-4">
-            <h2 className="text-xl font-semibold text-white">성적 추이 분석</h2>
+            <h2 className="text-xl font-semibold text-white">성적추이분석(회차별누계평균)</h2>
             {userResults.length > 0 && (
-                <div className="text-sm text-gray-400">
-                    <span className="font-semibold">현재 누적 평균: </span>
-                    <span className="font-bold text-indigo-400 text-lg">{finalCumulativeAverage}점</span>
+                <div className="text-sm text-gray-400 flex items-baseline gap-4">
+                    <div>
+                        <span className="font-semibold">최근 점수: </span>
+                        <span className="font-bold text-white text-lg">{latestScore}점</span>
+                    </div>
+                    <div className="border-l border-gray-600 h-5"></div>
+                    <div>
+                        <span className="font-semibold">현재 누적 평균: </span>
+                        <span className="font-bold text-indigo-400 text-lg">{finalCumulativeAverage}점</span>
+                    </div>
                 </div>
             )}
         </div>
