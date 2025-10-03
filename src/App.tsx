@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { generateQuizSetStream, getAIVerificationStream } from './services/geminiService';
+import { generateSingleQuiz, getAIVerification, shuffleArray } from './services/geminiService';
 import { saveQuizResult } from './services/firebaseService';
 import { QuizItem, User } from './types';
 import Loader from './components/Loader';
@@ -8,10 +8,10 @@ import QuizCard from './components/QuizCard';
 import Auth from './components/Auth';
 import GuideModal from './components/GuideModal';
 import HomeScreen from './components/HomeScreen';
-import Dashboard from './components/Dashboard'; // 대시보드 컴포넌트 임포트
+import Dashboard from './components/Dashboard';
 import { auth } from './firebase/config';
 
-type AppState = 'home' | 'quiz' | 'dashboard'; // 'dashboard' 상태 추가
+type AppState = 'home' | 'quiz' | 'dashboard';
 const COMPETENCIES = ["지휘감독능력", "책임감 및 적극성", "관리자로서의 자세 및 청렴도", "경영의식 및 혁신성", "업무의 이해도 및 상황대응력", "지휘감독능력", "책임감 및 적극성", "관리자로서의 자세 및 청렴도", "경영의식 및 혁신성", "업무의 이해도 및 상황대응력"];
 
 const App: React.FC = () => {
@@ -50,11 +50,14 @@ const App: React.FC = () => {
     setAppState('quiz');
 
     try {
-        console.log(`${COMPETENCIES.length}개의 문제 생성을 스트리밍으로 시작합니다...`);
-        for await (const newQuestion of generateQuizSetStream(COMPETENCIES)) {
-            setQuizData(prevData => [...prevData, newQuestion]);
-        }
-        console.log("스트리밍 생성이 완료되었습니다.");
+      console.log(`${COMPETENCIES.length}개의 문제 생성을 병렬로 시작합니다...`);
+      const promises = COMPETENCIES.map(competency =>
+        generateSingleQuiz(competency).then(newQuestion => {
+          setQuizData(prevData => [...prevData, { ...newQuestion, options: shuffleArray(newQuestion.options) }]);
+        })
+      );
+      await Promise.all(promises);
+      console.log("모든 문제 생성이 완료되었습니다.");
     } catch (err) {
       setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
     } finally {
@@ -71,30 +74,48 @@ const App: React.FC = () => {
     });
   };
 
-  const calculateScore = useCallback(() => quizData.reduce((score, item, index) => {
-    const userSelection = userAnswers[index] || [];
-    const isCorrect = userSelection.length === item.bestAnswers.length && [...userSelection].sort().join(',') === [...item.bestAnswers].sort().join(',');
-    return isCorrect ? score + 1 : score;
-  }, 0), [quizData, userAnswers]);
+  const calculateScore = useCallback(() => {
+    let totalPoints = 0;
+    const maxPointsPerQuestion = 6; // 2 best answers * 3 points
+
+    quizData.forEach((item, index) => {
+        const userSelection = userAnswers[index] || [];
+        userSelection.forEach(answer => {
+            if (item.bestAnswers.includes(answer)) {
+                totalPoints += 3;
+            } else if (item.secondBestAnswers.includes(answer)) {
+                totalPoints += 2;
+            } else if (item.worstAnswer === answer) {
+                totalPoints += 1;
+            }
+        });
+    });
+
+    const maxTotalPoints = quizData.length * maxPointsPerQuestion;
+    if (maxTotalPoints === 0) return 0;
+    
+    return Math.round((totalPoints / maxTotalPoints) * 100);
+  }, [quizData, userAnswers]);
 
   const handleShowResults = async () => {
     setShowResults(true);
+    const finalScore = calculateScore();
     if (user && quizData.length > 0) {
-      await saveQuizResult(user, "AI 실시간 모의고사", quizData, calculateScore());
+      await saveQuizResult(user, "AI 실시간 모의고사", quizData, finalScore);
     }
     if (quizData.length === 0) return;
 
     setIsVerifying(true);
     setVerificationResults({});
     try {
-        console.log("모든 문제에 대한 AI 검증을 스트리밍으로 시작합니다...");
-        for await (const verification of getAIVerificationStream(quizData)) {
-            setVerificationResults(prev => ({
-                ...prev,
-                [verification.index]: verification.result,
-            }));
-        }
-        console.log("AI 검증 스트리밍이 완료되었습니다.");
+        console.log("모든 문제에 대한 AI 검증을 병렬로 시작합니다...");
+        const verificationPromises = quizData.map((item, index) =>
+            getAIVerification(item).then(result => {
+                setVerificationResults(prev => ({ ...prev, [index]: result }));
+            })
+        );
+        await Promise.all(verificationPromises);
+        console.log("AI 검증이 완료되었습니다.");
     } catch(e) {
         console.error("AI 검증 중 오류 발생:", e);
         const errorMessage = "AI 검증 중 오류가 발생했습니다.";
@@ -114,7 +135,8 @@ const App: React.FC = () => {
       setError(null);
   };
   
-  const isQuizFinished = !isLoading && quizData.length === COMPETENCIES.length && quizData.every((_, index) => (userAnswers[index] || []).length === 2);
+  const isQuizFinished = quizData.length === COMPETENCIES.length && quizData.every((_, index) => (userAnswers[index] || []).length === 2);
+  const showLoader = isLoading && quizData.length < COMPETENCIES.length;
 
   const renderContent = () => {
     if (appState === 'dashboard') {
@@ -148,7 +170,7 @@ const App: React.FC = () => {
             verificationResult={verificationResults[index]}
           />
         ))}
-        {isLoading && <Loader />}
+        {showLoader && <Loader />}
         {!isLoading && !showResults && isQuizFinished && (
             <button onClick={handleShowResults} className="w-full bg-green-600 text-white font-bold py-4 px-6 rounded-lg hover:bg-green-700 transition-all text-xl animate-fade-in">
               결과 확인하기 {user && '(결과가 저장됩니다)'}
@@ -159,7 +181,7 @@ const App: React.FC = () => {
               <h2 className="text-2xl font-bold text-indigo-300">최종 결과</h2>
               <p className="text-4xl font-extrabold my-3">
                   <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-teal-400">{calculateScore()}</span>
-                  <span className="text-xl text-gray-400"> / {quizData.length}</span>
+                  <span className="text-xl text-gray-400"> 점</span>
               </p>
               <button onClick={handleGoHome} className="mt-4 bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all">
                 새로운 모의고사 풀기

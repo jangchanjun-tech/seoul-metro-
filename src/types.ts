@@ -5,8 +5,10 @@ export interface QuizItem {
   question: string;
   options: string[];
   bestAnswers: string[];
+  secondBestAnswers: string[]; // 차선 답변 배열
+  worstAnswer: string;       // 최악 답변
   explanation: string;
-  competency: string; // 평가 역량 필드 추가
+  competency: string;
 }
 
 // Add User type from Firebase for type safety

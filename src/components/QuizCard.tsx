@@ -12,6 +12,22 @@ interface QuizCardProps {
 }
 
 const QuizCard: React.FC<QuizCardProps> = ({ quizItem, questionIndex, userAnswers, showResults, onToggleAnswer, isVerifying, verificationResult }) => {
+
+  const getOptionType = (option: string): '최선' | '차선' | '최악' | null => {
+    if (quizItem.bestAnswers.includes(option)) return '최선';
+    if (quizItem.secondBestAnswers.includes(option)) return '차선';
+    if (quizItem.worstAnswer === option) return '최악';
+    return null;
+  };
+
+  const getTypeLabelClass = (type: '최선' | '차선' | '최악') => {
+    switch (type) {
+        case '최선': return 'bg-green-500/20 text-green-300 border-green-500/50';
+        case '차선': return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/50';
+        case '최악': return 'bg-red-500/20 text-red-300 border-red-500/50';
+    }
+  };
+
   const getOptionClass = (option: string) => {
     const isSelected = userAnswers.includes(option);
 
@@ -23,19 +39,20 @@ const QuizCard: React.FC<QuizCardProps> = ({ quizItem, questionIndex, userAnswer
 
     const isBestAnswer = quizItem.bestAnswers.includes(option);
 
-    if (isBestAnswer && isSelected) {
-      return 'bg-green-700 ring-2 ring-green-400'; // Correctly selected
+    if (isBestAnswer) {
+      return isSelected 
+        ? 'bg-green-700 ring-2 ring-green-400' // 최선을 맞게 선택
+        : 'bg-gray-700 border-2 border-green-500'; // 최선인데 선택 안함
     }
-    if (isBestAnswer && !isSelected) {
-      return 'bg-gray-700 border-2 border-green-500'; // Correct but not selected
+    
+    if (isSelected) {
+      return 'bg-red-700 ring-2 ring-red-400'; // 최선이 아닌데 선택함
     }
-    if (!isBestAnswer && isSelected) {
-      return 'bg-red-700 ring-2 ring-red-400'; // Incorrectly selected
-    }
-    return 'bg-gray-700'; // Default for incorrect and not selected
+    
+    return 'bg-gray-700 opacity-60'; // 그 외
   };
 
-  const isCorrect = showResults && quizItem.bestAnswers.length === userAnswers.length && [...quizItem.bestAnswers].sort().join(',') === [...userAnswers].sort().join(',');
+  const isCorrect = showResults && quizItem.bestAnswers.every(answer => userAnswers.includes(answer)) && userAnswers.every(answer => quizItem.bestAnswers.includes(answer));
 
   return (
     <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl shadow-lg p-6 animate-fade-in">
@@ -56,25 +73,34 @@ const QuizCard: React.FC<QuizCardProps> = ({ quizItem, questionIndex, userAnswer
       </h3>
       <p className="text-sm text-gray-400 mb-4 -mt-2 ml-7">가장 적절한 행동 2가지를 선택하세요.</p>
       <div className="grid grid-cols-1 gap-3">
-        {quizItem.options.map((option, index) => (
-          <button
-            key={index}
-            onClick={() => onToggleAnswer(questionIndex, option)}
-            disabled={showResults || (!userAnswers.includes(option) && userAnswers.length >= 2)}
-            className={`w-full text-left p-4 rounded-lg transition-all duration-300 transform hover:scale-105 disabled:cursor-not-allowed disabled:transform-none disabled:opacity-70 ${getOptionClass(option)}`}
-          >
-            {option}
-          </button>
-        ))}
+        {quizItem.options.map((option, index) => {
+           const type = showResults ? getOptionType(option) : null;
+           return (
+            <div key={index} className="flex items-center gap-3">
+              <button
+                onClick={() => onToggleAnswer(questionIndex, option)}
+                disabled={showResults || (!userAnswers.includes(option) && userAnswers.length >= 2)}
+                className={`flex-grow text-left p-4 rounded-lg transition-all duration-300 transform hover:scale-105 disabled:cursor-not-allowed disabled:transform-none disabled:opacity-70 ${getOptionClass(option)}`}
+              >
+                {option}
+              </button>
+              {type && (
+                <span className={`flex-shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border ${getTypeLabelClass(type)}`}>
+                  {type}
+                </span>
+              )}
+            </div>
+           )
+        })}
       </div>
       {showResults && (
-         <div className={`mt-4 p-4 rounded-lg text-sm transition-opacity duration-500 ${isCorrect ? 'bg-green-900/50 border-green-700' : 'bg-red-900/50 border-red-700'} border`}>
+         <div className={`mt-6 p-4 rounded-lg text-sm transition-opacity duration-500 ${isCorrect ? 'bg-green-900/50 border-green-700' : 'bg-red-900/50 border-red-700'} border`}>
           <p className="font-bold mb-2 text-lg">
-            {isCorrect ? '정답입니다!' : '오답입니다.'}
+            {isCorrect ? '최선 답변을 모두 맞혔습니다!' : '아쉬운 선택입니다.'}
           </p>
           <div className="space-y-2">
             <div>
-              <span className="font-semibold text-gray-300">정답: </span>
+              <span className="font-semibold text-gray-300">정답 (최선): </span>
               <span>{quizItem.bestAnswers.join(', ')}</span>
             </div>
             <div>
