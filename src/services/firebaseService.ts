@@ -260,3 +260,21 @@ export const saveAnalysisCache = async (userId: string, cacheData: AnalysisCache
         console.error("Error saving analysis cache:", error);
     }
 };
+
+export const getUserData = async (userId: string): Promise<Partial<User>> => {
+    const userRef = doc(db, 'users', userId);
+    const userDoc = await getDoc(userRef);
+    if (userDoc.exists()) {
+        return userDoc.data() as Partial<User>;
+    }
+    return {};
+};
+
+export const incrementUserGenerationCount = async (userId: string): Promise<void> => {
+    const userRef = doc(db, 'users', userId);
+    try {
+        await setDoc(userRef, { generationCount: increment(1) }, { merge: true });
+    } catch (e) {
+        console.error("Failed to increment generation count:", e);
+    }
+};

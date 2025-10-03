@@ -10,7 +10,9 @@ import {
   updateSeenQuestions,
   getSystemStats,
   saveSingleQuestionToBank,
-  fetchInitialBankSet
+  fetchInitialBankSet,
+  getUserData,
+  incrementUserGenerationCount,
 } from './services/firebaseService';
 import { QuizItem, User, SystemStats } from './types';
 import Loader from './components/Loader';
@@ -19,6 +21,7 @@ import Auth from './components/Auth';
 import GuideModal from './components/GuideModal';
 import HomeScreen from './components/HomeScreen';
 import Dashboard from './components/Dashboard';
+import QuizTimer from './components/QuizTimer'; // 타이머 컴포넌트 import
 import { auth } from './firebase/config';
 
 type AppState = 'home' | 'quiz' | 'dashboard' | 'admin';
@@ -157,14 +160,41 @@ const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>('home');
   const [verificationResults, setVerificationResults] = useState<Record<string, string>>({});
   const [isVerifying, setIsVerifying] = useState(false);
+  const [elapsedTime, setElapsedTime] = useState(0); // 타이머 상태 추가
   const mainRef = useRef<HTMLElement>(null);
   
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-        setUser(currentUser ? { uid: currentUser.uid, displayName: currentUser.displayName, email: currentUser.email, photoURL: currentUser.photoURL } : null);
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+        if (currentUser) {
+            const userData = await getUserData(currentUser.uid);
+            setUser({ 
+                uid: currentUser.uid, 
+                displayName: currentUser.displayName, 
+                email: currentUser.email, 
+                photoURL: currentUser.photoURL,
+                generationCount: userData.generationCount || 0
+            });
+        } else {
+            setUser(null);
+        }
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    // FIX: Replaced `NodeJS.Timeout` with `ReturnType<typeof setInterval>` to correctly type the interval ID in a browser environment, resolving the TypeScript namespace error.
+    let timerInterval: ReturnType<typeof setInterval> | null = null;
+    if (appState === 'quiz' && !isLoading && !isGeneratingMore && quizData.length > 0 && !showResults) {
+      timerInterval = setInterval(() => {
+        setElapsedTime(prevTime => prevTime + 1);
+      }, 1000);
+    }
+    return () => {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+      }
+    };
+  }, [appState, isLoading, isGeneratingMore, quizData.length, showResults]);
   
   useEffect(() => {
     const handleContextmenu = (e: MouseEvent) => e.preventDefault();
@@ -191,7 +221,13 @@ const App: React.FC = () => {
       setIsAuthModalOpen(true);
       return;
     }
+    
+    // Increment generation count
+    incrementUserGenerationCount(auth.currentUser.uid);
+    setUser(prevUser => prevUser ? { ...prevUser, generationCount: (prevUser.generationCount || 0) + 1 } : null);
+
     // Reset all states
+    setElapsedTime(0); // 타이머 초기화
     setIsLoading(true);
     setIsGeneratingMore(false);
     setError(null);
@@ -304,6 +340,7 @@ const App: React.FC = () => {
       setAppState('home');
       setQuizData([]);
       setError(null);
+      setElapsedTime(0); // 홈으로 갈 때 타이머 초기화
   };
   
   const isQuizFinished = quizData.length === 10 && quizData.every((item) => (userAnswers[item.id] || []).length === 2);
@@ -367,6 +404,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-indigo-900/60 p-4 sm:p-6 md:p-8">
+      {appState === 'quiz' && !showResults && <QuizTimer elapsedTime={elapsedTime} />}
       <div className="max-w-6xl mx-auto">
         <header className="flex justify-between items-center mb-8">
             <div className="text-left cursor-pointer" onClick={() => user && appState === 'home' ? undefined : handleGoHome()}>
@@ -383,6 +421,14 @@ const App: React.FC = () => {
                 )}
                 {user && ADMIN_UIDS.includes(user.uid) && appState === 'home' && (
                   <button onClick={() => setAppState('admin')} className="text-white font-medium py-2 px-4 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base">관리자</button>
+                )}
+                {user && (
+                  <div className="hidden sm:flex items-center gap-2 text-sm text-gray-400 border border-gray-600 px-3 py-1.5 rounded-lg" title="총 문제 생성 횟수">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                      </svg>
+                      <span><span className="font-bold text-white">{user.generationCount || 0}</span>회 생성</span>
+                  </div>
                 )}
                 <button onClick={() => setIsGuideModalOpen(true)} className="text-white font-medium py-2 px-4 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base">이용안내</button>
                 <Auth user={user} isModalOpen={isAuthModalOpen} onToggleModal={setIsAuthModalOpen} />
