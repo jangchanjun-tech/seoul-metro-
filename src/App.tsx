@@ -41,7 +41,7 @@ const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
     const generationWorkers = useRef<boolean[]>([]);
 
     const addLog = useCallback((message: string) => {
-        setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${message}`, ...prev].slice(0, 100));
+        setLogs(prev => [\`[\${new Date().toLocaleTimeString()}] \${message}\`, ...prev].slice(0, 100));
     }, []);
 
     const fetchStats = useCallback(async () => {
@@ -63,7 +63,7 @@ const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
     }, [addLog]);
 
     const startGeneration = useCallback(() => {
-        addLog(`${CONCURRENT_GENERATIONS}개의 병렬 프로세스로 문제 생성을 시작합니다...`);
+        addLog(\`\${CONCURRENT_GENERATIONS}개의 병렬 프로세스로 문제 생성을 시작합니다...\`);
         setIsGenerating(true);
         generationWorkers.current = Array(CONCURRENT_GENERATIONS).fill(true);
 
@@ -90,12 +90,12 @@ const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
             const targetCompetency = underfilledCompetencies[Math.floor(Math.random() * underfilledCompetencies.length)];
             
             try {
-                addLog(`[Worker ${workerId}] '${targetCompetency}' 역량 문제 생성 시도...`);
+                addLog(\`[Worker \${workerId}] '\${targetCompetency}' 역량 문제 생성 시도...\`);
                 const newQuestion = await generateSingleQuiz(targetCompetency);
                 await saveSingleQuestionToBank(newQuestion);
-                addLog(`[Worker ${workerId}] 성공: '${targetCompetency}' 문제 1개 저장 완료.`);
+                addLog(\`[Worker \${workerId}] 성공: '\${targetCompetency}' 문제 1개 저장 완료.\`);
             } catch (error) {
-                addLog(`[Worker ${workerId}] 오류: 생성 실패. ${error instanceof Error ? error.message.substring(0, 50) : '알 수 없는 오류'}`);
+                addLog(\`[Worker \${workerId}] 오류: 생성 실패. \${error instanceof Error ? error.message.substring(0, 50) : '알 수 없는 오류'}\`);
             }
 
             // Loop
@@ -166,7 +166,7 @@ const App: React.FC = () => {
   const formatTime = (timeInSeconds: number) => {
     const minutes = Math.floor(timeInSeconds / 60);
     const seconds = timeInSeconds % 60;
-    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    return \`\${String(minutes).padStart(2, '0')}:\${String(seconds).padStart(2, '0')}\`;
   };
 
   useEffect(() => {
@@ -252,7 +252,7 @@ const App: React.FC = () => {
         const bankQuestions = await fetchInitialBankSet(COMPETENCIES.slice(0, 5), seenIds);
         setQuizData(bankQuestions.map(q => ({...q, options: shuffleArray(q.options)})));
         setIsLoading(false); 
-        console.log(`1단계 완료: ${bankQuestions.length}개의 문제를 즉시 표시했습니다.`);
+        console.log(\`1단계 완료: \${bankQuestions.length}개의 문제를 즉시 표시했습니다.\`);
 
         // --- Phase 2: Generate from AI (Slow Path, in background) ---
         setIsGeneratingMore(true);

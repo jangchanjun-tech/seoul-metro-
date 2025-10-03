@@ -89,7 +89,7 @@ export const generateSingleQuiz = async (competency: string): Promise<QuizItem> 
         
         const selectedArchetype = questionArchetypes[Math.floor(Math.random() * questionArchetypes.length)];
 
-        const prompt = `서울교통공사 3급 역량평가 대비 실전 모의고사를 생성해 주십시오. 아래의 모든 필수 조건을 반드시 엄격하게 준수해야 합니다.
+        const prompt = \`서울교통공사 3급 역량평가 대비 실전 모의고사를 생성해 주십시오. 아래의 모든 필수 조건을 반드시 엄격하게 준수해야 합니다.
 
 ### 문제 출제 필수 조건 ###
 1.  **총 문제 수**: '${competency}' 역량에 대한 문제 정확히 1개만 생성합니다.
@@ -118,7 +118,7 @@ export const generateSingleQuiz = async (competency: string): Promise<QuizItem> 
     *   'worstAnswer' 필드에는 1개의 '최악' 선택지를 담은 문자열을 제공해야 합니다.
     *   'explanation' 필드에는, 5개의 모든 선택지에 대해 각각 왜 '최선', '차선', 또는 '최악'인지, 평가하는 역량과 서울교통공사의 핵심가치를 연결하여 상세하게 해설해야 합니다. **각 선택지에 대한 해설은 명확하게 구분하여 작성해주십시오.**
 
-이제, 위 모든 조건을 준수하여 새로운 문제를 생성해 주십시오.`;
+이제, 위 모든 조건을 준수하여 새로운 문제를 생성해 주십시오.\`;
 
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
@@ -136,30 +136,30 @@ export const generateSingleQuiz = async (competency: string): Promise<QuizItem> 
         return { ...quizData, id: crypto.randomUUID() };
 
     } catch (error) {
-        console.error(`'${competency}' 역량 문제 생성 중 오류:`, error);
+        console.error(\`'\${competency}' 역량 문제 생성 중 오류:\`, error);
         if (error instanceof Error) {
-            throw new Error(`'${competency}' 역량 문제 생성에 실패했습니다: ${error.message}`);
+            throw new Error(\`'\${competency}' 역량 문제 생성에 실패했습니다: \${error.message}\`);
         }
-        throw new Error(`'${competency}' 역량 문제 생성 중 알 수 없는 오류가 발생했습니다.`);
+        throw new Error(\`'\${competency}' 역량 문제 생성 중 알 수 없는 오류가 발생했습니다.\`);
     }
 };
 
 export const getAIVerification = async (quizItem: QuizItem): Promise<string> => {
     try {
         const { passage, question, bestAnswers, secondBestAnswers, worstAnswer, explanation, competency } = quizItem;
-        const systemInstruction = `당신은 AI가 생성한 교육 콘텐츠를 검증하는 고도로 숙련된 품질 관리 전문가입니다. 당신의 목표는 객관적이고, 비판적인 시각으로 주어진 문제와 해설의 논리적 타당성, 일관성, 교육적 가치를 평가하는 것입니다.`;
-        const prompt = `
+        const systemInstruction = \`당신은 AI가 생성한 교육 콘텐츠를 검증하는 고도로 숙련된 품질 관리 전문가입니다. 당신의 목표는 객관적이고, 비판적인 시각으로 주어진 문제와 해설의 논리적 타당성, 일관성, 교육적 가치를 평가하는 것입니다.\`;
+        const prompt = \`
             다음은 '서울교통공사 역량평가' 모의고사 문제입니다. 이 문제와 해설을 전문가의 입장에서 검증하고, 그 결과를 "AI 검증 결과"로 요약해 주십시오.
 
             ### 검증 대상 ###
-            - **평가 역량**: ${competency}
-            - **상황 지문**: ${passage}
-            - **질문**: ${question}
+            - **평가 역량**: \${competency}
+            - **상황 지문**: \${passage}
+            - **질문**: \${question}
             - **선택지 분류**:
-              - 최선: ${bestAnswers.join(', ')}
-              - 차선: ${secondBestAnswers.join(', ')}
-              - 최악: ${worstAnswer}
-            - **종합 해설**: ${explanation}
+              - 최선: \${bestAnswers.join(', ')}
+              - 차선: \${secondBestAnswers.join(', ')}
+              - 최악: \${worstAnswer}
+            - **종합 해설**: \${explanation}
 
             ### 검증 및 결과 작성 가이드라인 ###
             1.  **핵심 검증 포인트**: 각 선택지의 '최선/차선/최악' 분류가 타당한지, 그리고 종합 해설이 각 선택지에 대한 설명을 논리적으로 잘 풀어내고 있는지 검증하십시오.
@@ -167,7 +167,7 @@ export const getAIVerification = async (quizItem: QuizItem): Promise<string> => 
             3.  **결과 형식**: 최종 결과물은 한두 문장의 짧은 단락으로 구성되어야 합니다.
             
             이제, 위 내용에 대한 검증 결과를 작성해 주십시오.
-        `;
+        \`;
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
             contents: prompt,
@@ -196,7 +196,7 @@ const analysisSchema = {
 };
 
 export const generateCompetencyAnalysis = async (userResults: QuizResult[]): Promise<CompetencyAnalysis> => {
-    const systemInstruction = `당신은 데이터 기반의 HR 역량 분석 전문가입니다. 당신의 임무는 응시자의 모의고사 결과를 분석하여, 5가지 핵심 역량에 대한 강점과 약점을 진단하고, 다른 응시자들과 비교하여 건설적인 피드백을 제공하는 것입니다. 분석은 반드시 데이터에 기반해야 하며, 긍정적이고 성장을 독려하는 어조를 사용해야 합니다.`;
+    const systemInstruction = \`당신은 데이터 기반의 HR 역량 분석 전문가입니다. 당신의 임무는 응시자의 모의고사 결과를 분석하여, 5가지 핵심 역량에 대한 강점과 약점을 진단하고, 다른 응시자들과 비교하여 건설적인 피드백을 제공하는 것입니다. 분석은 반드시 데이터에 기반해야 하며, 긍정적이고 성장을 독려하는 어조를 사용해야 합니다.\`;
 
     // 데이터 요약 및 가공
     const summary = userResults.flatMap(result =>
@@ -213,11 +213,11 @@ export const generateCompetencyAnalysis = async (userResults: QuizResult[]): Pro
         }).filter(Boolean)
     ).slice(0, 30); // 너무 긴 프롬프트를 막기 위해 최근 30개 문제로 제한
 
-    const prompt = `
+    const prompt = \`
         다음은 한 응시자의 서울교통공사 역량평가 모의고사 응시 기록 요약입니다. 이 데이터를 바탕으로, 각 5가지 핵심 역량에 대한 종합적인 상황판단 역량을 평가하고, 다른 응시자들과 비교 분석하여 결과를 제시해주십시오.
 
-        ### 응시 기록 데이터 (${summary.length}개 문제) ###
-        ${JSON.stringify(summary, null, 2)}
+        ### 응시 기록 데이터 (\${summary.length}개 문제) ###
+        \${JSON.stringify(summary, null, 2)}
 
         ### 분석 및 결과 작성 가이드라인 ###
         1.  **종합 분석**: 각 역량에 대해, 응시자의 답변 패턴을 분석하십시오. (예: '최선'의 선택을 꾸준히 하는지, '최악'의 선택을 피하는 경향이 있는지, 특정 유형의 상황에서 강점/약점을 보이는지 등)
@@ -225,7 +225,7 @@ export const generateCompetencyAnalysis = async (userResults: QuizResult[]): Pro
         3.  **결과 형식**: 최종 결과물은 5개 역량의 이름을 key로, 분석 내용을 value로 하는 JSON 객체여야 합니다. 각 분석 내용은 2~3문장의 완성된 단락으로 작성하십시오.
 
         이제, 위 모든 가이드라인을 준수하여 이 응시자에 대한 역량 분석 결과를 JSON 형식으로 작성해 주십시오.
-    `;
+    \`;
 
     try {
         const response = await ai.models.generateContent({

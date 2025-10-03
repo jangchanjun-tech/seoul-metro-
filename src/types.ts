@@ -2,6 +2,7 @@
 
 import { Timestamp } from "firebase/firestore";
 
+// FIX: Added 'export' to make the interface available in other modules.
 export interface QuizItem {
   id: string; // Firestore document ID or client-side UUID
   passage: string;
@@ -15,6 +16,7 @@ export interface QuizItem {
 }
 
 // Add User type from Firebase for type safety
+// FIX: Added 'export' to make the interface available in other modules.
 export interface User {
   uid: string;
   displayName: string | null;
@@ -23,6 +25,7 @@ export interface User {
   generationCount?: number;
 }
 
+// FIX: Added 'export' to make the interface available in other modules.
 export interface QuizResult {
   id: string;
   userId: string;
@@ -36,6 +39,7 @@ export interface QuizResult {
   createdAt: Timestamp | null;
 }
 
+// FIX: Added 'export' to make the interface available in other modules.
 export interface SystemStats {
     total: number;
     지휘감독능력: number;
@@ -45,19 +49,23 @@ export interface SystemStats {
     '업무의 이해도 및 상황대응력': number;
 }
 
+// FIX: Added 'export' to make the type available in other modules.
 export type CompetencyAnalysis = {
     [key in keyof Omit<SystemStats, 'total'>]: string;
 };
 
+// FIX: Added 'export' to make the interface available in other modules.
 export interface CompetencyPerformanceStat {
   totalScore: number;
   attemptCount: number; // Number of quizzes taken that include this competency
 }
 
+// FIX: Added 'export' to make the interface available in other modules.
 export interface OverallPerformanceStats {
   [key: string]: CompetencyPerformanceStat;
 }
 
+// FIX: Added 'export' to make the interface available in other modules.
 export interface AnalysisCache {
   analysis: CompetencyAnalysis;
   basedOnResultId: string; // ID of the latest QuizResult this analysis is based on

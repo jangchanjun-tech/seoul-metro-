@@ -148,7 +148,7 @@ export const fetchBankQuestions = async (competency: string, count: number, seen
         return [];
 
     } catch (error) {
-        console.error(`'${competency}' 역량의 문제 은행 호출 중 오류:`, error);
+        console.error(\`'\${competency}' 역량의 문제 은행 호출 중 오류:\`, error);
         return [];
     }
 };
@@ -187,14 +187,14 @@ export const saveNewQuestions = async (questions: QuizItem[]): Promise<void> => 
     batch.set(statsRef, statsUpdate, { merge: true });
 
     await batch.commit();
-    console.log(`${questions.length}개의 새 문제가 은행에 저장되고 통계가 업데이트되었습니다.`);
+    console.log(\`\${questions.length}개의 새 문제가 은행에 저장되고 통계가 업데이트되었습니다.\`);
 };
 
 export const updateSeenQuestions = async (userId: string, questionIds: string[]) => {
     if (!userId || questionIds.length === 0) return;
     const batch = writeBatch(db);
     questionIds.forEach(id => {
-        const docRef = doc(db, `users/${userId}/seenQuestions`, id);
+        const docRef = doc(db, \`users/\${userId}/seenQuestions\`, id);
         batch.set(docRef, { seenAt: serverTimestamp() });
     });
     await batch.commit();
@@ -239,7 +239,7 @@ export const saveSingleQuestionToBank = async (question: QuizItem): Promise<void
 
 export const getAnalysisCache = async (userId: string): Promise<AnalysisCache | null> => {
     try {
-        const cacheRef = doc(db, `users/${userId}/analysis/summary`);
+        const cacheRef = doc(db, \`users/\${userId}/analysis/summary\`);
         const cacheDoc = await getDoc(cacheRef);
         if (cacheDoc.exists()) {
             return cacheDoc.data() as AnalysisCache;
@@ -253,7 +253,7 @@ export const getAnalysisCache = async (userId: string): Promise<AnalysisCache | 
 
 export const saveAnalysisCache = async (userId: string, cacheData: AnalysisCache): Promise<void> => {
     try {
-        const cacheRef = doc(db, `users/${userId}/analysis/summary`);
+        const cacheRef = doc(db, \`users/\${userId}/analysis/summary\`);
         await setDoc(cacheRef, cacheData);
         console.log("AI analysis cache saved successfully.");
     } catch (error) {
