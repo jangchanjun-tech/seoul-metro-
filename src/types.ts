@@ -48,6 +48,15 @@ export type CompetencyAnalysis = {
     [key in keyof Omit<SystemStats, 'total'>]: string;
 };
 
+export interface CompetencyPerformanceStat {
+  totalScore: number;
+  attemptCount: number; // Number of quizzes taken that include this competency
+}
+
+export interface OverallPerformanceStats {
+  [key: string]: CompetencyPerformanceStat;
+}
+
 
 // Add manual type definitions for Vite environment variables
 // This resolves errors related to 'import.meta.env' not being recognized by TypeScript.

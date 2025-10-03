@@ -1,23 +1,80 @@
-import { collection, addDoc, serverTimestamp, writeBatch, doc, getDocs, query, where, orderBy, limit, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, writeBatch, doc, getDocs, query, where, limit, getDoc, setDoc, updateDoc, increment, runTransaction } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import { QuizItem, User, QuizResult, SystemStats } from "../types";
+import { QuizItem, User, QuizResult, SystemStats, OverallPerformanceStats } from "../types";
+
+const COMPETENCIES = ["지휘감독능력", "책임감 및 적극성", "관리자로서의 자세 및 청렴도", "경영의식 및 혁신성", "업무의 이해도 및 상황대응력"];
 
 export const saveQuizResult = async (user: User, topic: string, quizData: QuizItem[], userAnswers: Record<number, string[]>, score: number) => {
     try {
-        const quizResultsCollection = collection(db, "quizResults");
-        await addDoc(quizResultsCollection, {
-            userId: user.uid,
-            userName: user.displayName,
-            topic: topic,
-            quizData: quizData,
-            userAnswers: userAnswers, // 사용자 답변 저장
-            score: score,
-            totalQuestions: quizData.length,
-            createdAt: serverTimestamp()
+        const statsRef = doc(db, "performanceStats", "summary");
+        const resultRef = doc(collection(db, "quizResults"));
+
+        await runTransaction(db, async (transaction) => {
+            // 1. Get the current overall performance stats
+            const statsDoc = await transaction.get(statsRef);
+            let currentStats: OverallPerformanceStats = {};
+            if (statsDoc.exists()) {
+                currentStats = statsDoc.data() as OverallPerformanceStats;
+            } else {
+                // Initialize if it doesn't exist
+                COMPETENCIES.forEach(c => {
+                    currentStats[c] = { totalScore: 0, attemptCount: 0 };
+                });
+            }
+            
+            // 2. Calculate scores for the new result by competency
+            const competencyScores: { [key: string]: { score: number, count: number } } = {};
+            quizData.forEach((item, index) => {
+                const competency = item.competency;
+                if (!competencyScores[competency]) {
+                    competencyScores[competency] = { score: 0, count: 0 };
+                }
+                
+                let totalPoints = 0;
+                const maxPointsPerQuestion = 6;
+                const userSelection = userAnswers[index] || [];
+                userSelection.forEach(answer => {
+                    if (item.bestAnswers.includes(answer)) totalPoints += 3;
+                    else if (item.secondBestAnswers.includes(answer)) totalPoints += 2;
+                    else if (item.worstAnswer === answer) totalPoints += 1;
+                });
+                // FIX: This comparison was causing a TypeScript error because `maxPointsPerQuestion` is a constant `6`.
+                // The check is unnecessary as division by zero is not possible here.
+                const questionScore = Math.round((totalPoints / maxPointsPerQuestion) * 100);
+
+                competencyScores[competency].score += questionScore;
+                competencyScores[competency].count += 1;
+            });
+            
+            // 3. Update the overall stats
+            for (const competency in competencyScores) {
+                if (!currentStats[competency]) {
+                     currentStats[competency] = { totalScore: 0, attemptCount: 0 };
+                }
+                const avgScoreForQuiz = competencyScores[competency].score / competencyScores[competency].count;
+                currentStats[competency].totalScore += avgScoreForQuiz;
+                currentStats[competency].attemptCount += 1;
+            }
+
+            // 4. Save the user's result and the updated stats
+            transaction.set(resultRef, {
+                userId: user.uid,
+                userName: user.displayName,
+                topic: topic,
+                quizData: quizData,
+                userAnswers: userAnswers,
+                score: score,
+                totalQuestions: quizData.length,
+                createdAt: serverTimestamp()
+            });
+            
+            transaction.set(statsRef, currentStats);
         });
-        console.log("사용자 답변을 포함한 시험 결과가 성공적으로 저장되었습니다!");
+
+        console.log("시험 결과 및 전체 통계가 성공적으로 업데이트되었습니다!");
+
     } catch (error) {
-        console.error("시험 결과 저장 중 오류 발생: ", error);
+        console.error("시험 결과 저장 및 통계 업데이트 중 오류 발생: ", error);
     }
 };
 
@@ -47,19 +104,20 @@ export const getUserQuizResults = async (userId: string): Promise<QuizResult[]> 
     }
 };
 
-export const getAllQuizResults = async (): Promise<QuizResult[]> => {
+export const getOverallPerformanceStats = async (): Promise<OverallPerformanceStats | null> => {
     try {
-        const results: QuizResult[] = [];
-        const querySnapshot = await getDocs(collection(db, "quizResults"));
-        querySnapshot.forEach((doc) => {
-            results.push({ id: doc.id, ...doc.data() } as QuizResult);
-        });
-        return results;
+        const statsRef = doc(db, "performanceStats", "summary");
+        const statsDoc = await getDoc(statsRef);
+        if (statsDoc.exists()) {
+            return statsDoc.data() as OverallPerformanceStats;
+        }
+        return null;
     } catch (error) {
-        console.error("Error fetching all quiz results:", error);
-        throw new Error("전체 시험 결과를 불러오는 데 실패했습니다.");
+        console.error("Error fetching overall performance stats:", error);
+        throw new Error("전체 사용자 통계 데이터를 불러오는 데 실패했습니다.");
     }
 };
+
 
 export const getSeenQuestionIds = async (userId: string): Promise<Set<string>> => {
     const seenIds = new Set<string>();

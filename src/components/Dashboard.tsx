@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { User, QuizResult, CompetencyAnalysis } from '../types';
-import { getUserQuizResults, getAllQuizResults } from '../services/firebaseService';
+import { User, QuizResult, CompetencyAnalysis, OverallPerformanceStats } from '../types';
+import { getUserQuizResults, getOverallPerformanceStats } from '../services/firebaseService';
 import { generateCompetencyAnalysis } from '../services/geminiService';
 import Loader from './Loader';
 
@@ -34,7 +34,7 @@ const calculateScore = (items: any[], answers: Record<number, string[]> | undefi
 
 const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
   const [userResults, setUserResults] = useState<QuizResult[]>([]);
-  const [allResults, setAllResults] = useState<QuizResult[]>([]);
+  const [overallStats, setOverallStats] = useState<OverallPerformanceStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<CompetencyAnalysis | null>(null);
@@ -44,12 +44,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [userRes, allRes] = await Promise.all([
+        const [userRes, overallRes] = await Promise.all([
           getUserQuizResults(user.uid),
-          getAllQuizResults(),
+          getOverallPerformanceStats(),
         ]);
         setUserResults(userRes);
-        setAllResults(allRes);
+        setOverallStats(overallRes);
 
         if (userRes.length > 0) {
             setIsAnalysisLoading(true);
@@ -84,8 +84,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
     return COMPETENCIES.map(competency => {
         // 1. Latest Score
         const latestResult = userResults[0];
-        const latestItems = latestResult?.quizData.filter(q => q.competency === competency) || [];
-        const latestScore = latestResult?.userAnswers ? calculateScore(latestItems, latestResult.userAnswers) : 0;
+        let latestScore = 0;
+        if (latestResult && latestResult.userAnswers) {
+            const latestItems = latestResult.quizData.filter(q => q.competency === competency);
+            latestScore = calculateScore(latestItems, latestResult.userAnswers);
+        }
         
         // 2. User's Average Score
         const userScoresForCompetency: number[] = [];
@@ -100,16 +103,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
         const userAverage = userScoresForCompetency.length ? userScoresForCompetency.reduce((a, b) => a + b, 0) / userScoresForCompetency.length : 0;
 
         // 3. All Users' Average Score
-        const allScoresForCompetency: number[] = [];
-        allResults.forEach(res => {
-             if(res.userAnswers){
-                const items = res.quizData.filter(q => q.competency === competency);
-                 if (items.length > 0) {
-                    allScoresForCompetency.push(calculateScore(items, res.userAnswers));
-                 }
-            }
-        });
-        const overallAverage = allScoresForCompetency.length ? allScoresForCompetency.reduce((a, b) => a + b, 0) / allScoresForCompetency.length : 0;
+        const competencyStats = overallStats ? overallStats[competency] : null;
+        const overallAverage = (competencyStats && competencyStats.attemptCount > 0)
+            ? competencyStats.totalScore / competencyStats.attemptCount
+            : 0;
 
         return {
             name: competency,
@@ -118,7 +115,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
             overallAverage: Math.round(overallAverage)
         };
     });
-  }, [userResults, allResults]);
+  }, [userResults, overallStats]);
 
 
   if (loading) {
