@@ -5,7 +5,8 @@ import {
   signOut, 
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  updateProfile
 } from 'firebase/auth';
 import { User } from '../types';
 import { auth } from '../firebase/config';
@@ -20,6 +21,7 @@ const Auth: React.FC<AuthProps> = ({ user, isModalOpen, onToggleModal }) => {
   const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [nickname, setNickname] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -30,6 +32,7 @@ const Auth: React.FC<AuthProps> = ({ user, isModalOpen, onToggleModal }) => {
         setMode('login');
         setEmail('');
         setPassword('');
+        setNickname('');
         setError(null);
         setMessage(null);
     }, 300); // Allow for closing animation
@@ -73,7 +76,12 @@ const Auth: React.FC<AuthProps> = ({ user, isModalOpen, onToggleModal }) => {
         await signInWithEmailAndPassword(auth, email, password);
         handleModalClose();
       } else if (mode === 'signup') {
-        await createUserWithEmailAndPassword(auth, email, password);
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        if (userCredential.user) {
+            await updateProfile(userCredential.user, {
+                displayName: nickname
+            });
+        }
         setMessage("회원가입이 완료되었습니다. 자동으로 로그인됩니다.");
         setTimeout(() => handleModalClose(), 2000);
       } else if (mode === 'reset') {
@@ -114,6 +122,7 @@ const Auth: React.FC<AuthProps> = ({ user, isModalOpen, onToggleModal }) => {
 
         <form onSubmit={handleEmailSubmit} className="space-y-4">
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="이메일 주소" required className="w-full bg-gray-700 text-white p-3 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none"/>
+          {mode === 'signup' && <input type="text" value={nickname} onChange={(e) => setNickname(e.target.value)} placeholder="닉네임 (이름)" required className="w-full bg-gray-700 text-white p-3 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none"/>}
           {mode !== 'reset' && <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비밀번호" required className="w-full bg-gray-700 text-white p-3 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none"/>}
           
           {error && <p className="text-red-400 text-sm text-center">{error}</p>}
