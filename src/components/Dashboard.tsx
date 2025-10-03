@@ -76,48 +76,56 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
         setLoading(true);
         const userRes = await getUserQuizResults(user.uid);
         setUserResults(userRes);
+        setLoading(false);
 
-        // --- AI Analysis Caching Logic ---
-        if (userRes.length > 0) {
-            const latestResultId = userRes[0].id;
-            const cache = await getAnalysisCache(user.uid);
+        // --- AI Analysis with Stale-While-Revalidate Strategy ---
+        if (userRes.length === 0) {
+            setIsAnalysisLoading(false);
+            return; // No results, nothing to analyze
+        }
 
-            if (cache && cache.basedOnResultId === latestResultId) {
-                // Use cached analysis
-                setAnalysis(cache.analysis);
-                setIsAnalysisLoading(false);
-            } else {
-                // Generate new analysis
-                setIsAnalysisLoading(true);
-                try {
-                    const aiAnalysis = await generateCompetencyAnalysis(userRes);
-                    setAnalysis(aiAnalysis);
-                    // Save the new analysis to cache
-                    const newCache: AnalysisCache = {
-                        analysis: aiAnalysis,
-                        basedOnResultId: latestResultId,
-                        generatedAt: serverTimestamp() as any, // Cast for client-side
-                    };
-                    await saveAnalysisCache(user.uid, newCache);
-                } catch (analysisError) {
-                    console.error("AI Analysis Error:", analysisError);
+        const latestResultId = userRes[0].id;
+        const cache = await getAnalysisCache(user.uid);
+
+        // Step 1: Immediately display cached data if it exists.
+        if (cache) {
+            setAnalysis(cache.analysis);
+            setIsAnalysisLoading(false); // Instantly hide loader if showing stale data
+        } else {
+            setIsAnalysisLoading(true); // No cache, so we must wait for the first analysis
+        }
+
+        // Step 2: Check if cache is stale and regenerate in the background.
+        if (!cache || cache.basedOnResultId !== latestResultId) {
+            console.log("AI 분석 캐시가 없거나 오래되었습니다. 백그라운드에서 새로 생성합니다.");
+            try {
+                const aiAnalysis = await generateCompetencyAnalysis(userRes);
+                // Update UI with the new analysis and save it to the cache
+                setAnalysis(aiAnalysis);
+                const newCache: AnalysisCache = {
+                    analysis: aiAnalysis,
+                    basedOnResultId: latestResultId,
+                    generatedAt: serverTimestamp() as any,
+                };
+                await saveAnalysisCache(user.uid, newCache);
+            } catch (analysisError) {
+                console.error("AI Analysis Error:", analysisError);
+                if (!cache) { // Only show error if there was no stale data to show
                     const errorAnalysis = COMPETENCIES.reduce((acc, comp) => {
                         acc[comp as keyof CompetencyAnalysis] = "AI 분석 중 오류가 발생했습니다.";
                         return acc;
                     }, {} as CompetencyAnalysis);
                     setAnalysis(errorAnalysis);
-                } finally {
-                    setIsAnalysisLoading(false);
                 }
+            } finally {
+                // Hide the loader regardless of the outcome
+                setIsAnalysisLoading(false);
             }
-        } else {
-             setIsAnalysisLoading(false); // No results, no analysis needed
         }
-
       } catch (err) {
         setError(err instanceof Error ? err.message : '데이터를 불러오는 중 오류가 발생했습니다.');
-      } finally {
         setLoading(false);
+        setIsAnalysisLoading(false);
       }
     };
     fetchData();
@@ -132,9 +140,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
             const latestItems = latestResult.quizData.filter(q => q.competency === competency);
             const mappedAnswers: Record<string, string[]> = {};
             latestItems.forEach(item => {
-                const originalIndex = latestResult.quizData.findIndex(q => q.id === item.id);
-                if(originalIndex > -1 && latestResult.userAnswers?.[originalIndex] && item.id) {
-                    mappedAnswers[item.id] = latestResult.userAnswers[originalIndex];
+                const originalIndex = latestResult.quizData.findIndex(q => q.id === item.id || q.question === item.question);
+                if(originalIndex > -1 && latestResult.userAnswers?.[originalIndex]) {
+                    const key = item.id || originalIndex.toString();
+                    mappedAnswers[key] = latestResult.userAnswers[originalIndex];
                 }
             });
             latestScore = calculateScore(latestItems, mappedAnswers);
@@ -148,11 +157,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
             if (result.userAnswers) {
                 const itemsForCompetency = result.quizData.filter(q => q.competency === competency);
                 if (itemsForCompetency.length > 0) {
-                    const mappedAnswers: Record<string, string[]> = {};
+                     const mappedAnswers: Record<string, string[]> = {};
                      itemsForCompetency.forEach(item => {
-                        const originalIndex = result.quizData.findIndex(q => q.id === item.id);
-                        if(originalIndex > -1 && result.userAnswers?.[originalIndex] && item.id) {
-                            mappedAnswers[item.id] = result.userAnswers[originalIndex];
+                        const originalIndex = result.quizData.findIndex(q => q.id === item.id || q.question === item.question);
+                         if(originalIndex > -1 && result.userAnswers?.[originalIndex]) {
+                            const key = item.id || originalIndex.toString();
+                            mappedAnswers[key] = result.userAnswers[originalIndex];
                         }
                     });
                     totalUserScore += calculateScore(itemsForCompetency, mappedAnswers);
@@ -241,7 +251,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
         {isAnalysisLoading ? (
             <div className="flex items-center justify-center gap-2 text-gray-400 py-8">
                  <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                 <span>AI가 새로운 성적을 반영하여 종합 리포트를 생성하고 있습니다...</span>
+                 <span>AI가 성과를 분석하고 있습니다...</span>
             </div>
         ) : analysis ? (
              <div className="space-y-4">
