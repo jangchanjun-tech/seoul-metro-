@@ -1,20 +1,33 @@
-import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+// FIX: Updated to use Firebase v8 namespaced imports to resolve module resolution errors.
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import 'firebase/compat/firestore';
 
+// --- Firebase Configuration ---
+// The configuration values have been set based on your provided screenshot.
 const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY,
-  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.FIREBASE_PROJECT_ID,
-  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.FIREBASE_APP_ID
+  apiKey: "AIzaSyCe9aBbujNpgF4N3HOjgaxW1ILNME8T-9Y",
+  authDomain: "seoulmetro-testing.firebaseapp.com",
+  projectId: "seoulmetro-testing",
+  storageBucket: "seoulmetro-testing.firebasestorage.app",
+  messagingSenderId: "830081805649",
+  appId: "1:830081805649:web:46da4ab18bf641d98cf770"
 };
 
+// This simplified logic checks if the essential configuration (projectId) is present.
 export const isFirebaseConfigured = !!firebaseConfig.projectId;
 
-const app = isFirebaseConfigured ? initializeApp(firebaseConfig) : null;
+// FIX: Switched to v8 initialization pattern to avoid re-initializing the app on hot reloads.
+let app: firebase.app.App | null = null;
+if (isFirebaseConfigured) {
+    if (!firebase.apps.length) {
+        app = firebase.initializeApp(firebaseConfig);
+    } else {
+        app = firebase.app();
+    }
+}
 
-export const auth = app ? getAuth(app) : null;
-export const db = app ? getFirestore(app) : null;
-export const googleProvider = app ? new GoogleAuthProvider() : null;
+// FIX: Switched to Firebase v8 syntax for getting auth, firestore, and provider instances.
+export const auth = app ? app.auth() : null;
+export const db = app ? app.firestore() : null;
+export const googleProvider = app ? new firebase.auth.GoogleAuthProvider() : null;

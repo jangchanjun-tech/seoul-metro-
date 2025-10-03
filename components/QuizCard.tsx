@@ -7,9 +7,11 @@ interface QuizCardProps {
   userAnswers: string[];
   showResults: boolean;
   onToggleAnswer: (questionIndex: number, answer: string) => void;
+  isVerifying: boolean;
+  verificationResult?: string;
 }
 
-const QuizCard: React.FC<QuizCardProps> = ({ quizItem, questionIndex, userAnswers, showResults, onToggleAnswer }) => {
+const QuizCard: React.FC<QuizCardProps> = ({ quizItem, questionIndex, userAnswers, showResults, onToggleAnswer, isVerifying, verificationResult }) => {
   const getOptionClass = (option: string) => {
     const isSelected = userAnswers.includes(option);
 
@@ -37,8 +39,14 @@ const QuizCard: React.FC<QuizCardProps> = ({ quizItem, questionIndex, userAnswer
 
   return (
     <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl shadow-lg p-6 animate-fade-in">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-semibold text-indigo-300">[상황]</h3>
+        <span className="bg-indigo-500/20 text-indigo-300 text-xs font-semibold px-3 py-1 rounded-full border border-indigo-400/50">
+          평가 역량: {quizItem.competency}
+        </span>
+      </div>
+
       <div className="mb-6">
-        <h3 className="text-lg font-semibold text-indigo-300 mb-2">[상황]</h3>
         <p className="text-gray-300 whitespace-pre-wrap leading-relaxed bg-gray-900/50 p-4 rounded-md border border-gray-700">{quizItem.passage}</p>
       </div>
       
@@ -75,7 +83,26 @@ const QuizCard: React.FC<QuizCardProps> = ({ quizItem, questionIndex, userAnswer
             </div>
           </div>
           <hr className="my-3 border-gray-600" />
-          <p className="text-gray-300 whitespace-pre-wrap">{quizItem.explanation}</p>
+          <div>
+            <h4 className="font-semibold text-indigo-300 mb-2">해설</h4>
+            <p className="text-gray-300 whitespace-pre-wrap">{quizItem.explanation}</p>
+          </div>
+          <hr className="my-3 border-gray-600" />
+          <div className="mt-4">
+              <h4 className="font-semibold text-indigo-300 mb-2">AI 검증 결과</h4>
+              {isVerifying && !verificationResult && (
+                  <div className="flex items-center gap-2 text-gray-400 text-xs">
+                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>해설의 논리적 타당성을 검증하고 있습니다...</span>
+                  </div>
+              )}
+              {verificationResult && (
+                  <p className="text-gray-300 whitespace-pre-wrap">{verificationResult}</p>
+              )}
+          </div>
         </div>
       )}
     </div>

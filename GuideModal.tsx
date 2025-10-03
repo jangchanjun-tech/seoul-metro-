@@ -57,7 +57,7 @@ const GuideModal: React.FC<GuideModalProps> = ({ onClose }) => {
           </div>
           <div className="flex items-start">
             <span className="bg-indigo-600 text-white rounded-full w-6 h-6 flex-shrink-0 flex items-center justify-center font-bold mr-3">4</span>
-            <p><strong>Google 계정으로 로그인</strong>하면 모의고사 결과가 자동으로 저장되어 학습 기록을 관리할 수 있습니다.</p>
+            <p><strong>로그인</strong>하면 모의고사 결과가 자동으로 저장되어 학습 기록을 관리할 수 있습니다.</p>
           </div>
         </div>
         <button

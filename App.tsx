@@ -1,24 +1,17 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
-import { generateQuiz, getAIVerification } from './geminiService';
-import { saveQuizResult } from './firebaseService';
+// FIX: The `onAuthStateChanged` function is called directly on the `auth` object in Firebase v8. The v9 modular import has been removed.
+import { generateQuizSetStream, getAIVerificationStream } from './services/geminiService';
+import { saveQuizResult } from './services/firebaseService';
 import { QuizItem, User } from './types';
 import Loader from './Loader';
 import QuizCard from './QuizCard';
 import Auth from './Auth';
 import GuideModal from './GuideModal';
 import HomeScreen from './HomeScreen';
-import { auth, isFirebaseConfigured } from './firebaseConfig';
+import { auth } from './firebase/config';
 
-// --- 유틸리티 함수 ---
-function shuffleArray<T>(array: T[]): T[] {
-    const newArray = [...array];
-    for (let i = newArray.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
-    }
-    return newArray;
-}
+type AppState = 'home' | 'quiz';
+const COMPETENCIES = ["지휘감독능력", "책임감 및 적극성", "관리자로서의 자세 및 청렴도", "경영의식 및 혁신성", "업무의 이해도 및 상황대응력", "지휘감독능력", "책임감 및 적극성", "관리자로서의 자세 및 청렴도", "경영의식 및 혁신성", "업무의 이해도 및 상황대응력"];
 
 const App: React.FC = () => {
   const [quizData, setQuizData] = useState<QuizItem[]>([]);
@@ -28,13 +21,14 @@ const App: React.FC = () => {
   const [showResults, setShowResults] = useState<boolean>(false);
   const [user, setUser] = useState<User | null>(null);
   const [isGuideModalOpen, setIsGuideModalOpen] = useState<boolean>(false);
-  const [appState, setAppState] = useState<'home' | 'quiz'>('home');
+  const [appState, setAppState] = useState<AppState>('home');
   const [verificationResults, setVerificationResults] = useState<Record<number, string>>({});
   const [isVerifying, setIsVerifying] = useState(false);
   
   useEffect(() => {
     if (auth) {
-        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+        // FIX: `onAuthStateChanged` is a method on the `auth` object in Firebase v8, not a standalone function.
+        const unsubscribe = auth.onAuthStateChanged((currentUser) => {
             setUser(currentUser ? { uid: currentUser.uid, displayName: currentUser.displayName, email: currentUser.email, photoURL: currentUser.photoURL } : null);
         });
         return () => unsubscribe();
@@ -52,22 +46,11 @@ const App: React.FC = () => {
     setAppState('quiz');
 
     try {
-        const competencies = [
-            "지휘감독능력", "책임감 및 적극성", "관리자로서의 자세 및 청렴도", "경영의식 및 혁신성", "업무의 이해도 및 상황대응력",
-            "지휘감독능력", "책임감 및 적극성", "관리자로서의 자세 및 청렴도", "경영의식 및 혁신성", "업무의 이해도 및 상황대응력"
-        ];
-        
-        console.log("10개의 문제 생성을 병렬로 시작합니다...");
-        const generationPromises = competencies.map(competency => generateQuiz(competency));
-        const newQuestions = await Promise.all(generationPromises);
-        console.log("10개의 문제 생성이 완료되었습니다.");
-
-        const processedQuestions = newQuestions.map(q => ({
-            ...q,
-            options: shuffleArray(q.options)
-        }));
-
-        setQuizData(processedQuestions);
+        console.log(`${COMPETENCIES.length}개의 문제 생성을 스트리밍으로 시작합니다...`);
+        for await (const newQuestion of generateQuizSetStream(COMPETENCIES)) {
+            setQuizData(prevData => [...prevData, newQuestion]);
+        }
+        console.log("스트리밍 생성이 완료되었습니다.");
     } catch (err) {
       setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
     } finally {
@@ -93,28 +76,21 @@ const App: React.FC = () => {
   const handleShowResults = async () => {
     setShowResults(true);
     if (user && quizData.length > 0) {
-      saveQuizResult(user.uid, "AI 실시간 모의고사", quizData, calculateScore());
+      saveQuizResult(user, "AI 실시간 모의고사", quizData, calculateScore());
     }
     if (quizData.length === 0) return;
 
     setIsVerifying(true);
     setVerificationResults({});
     try {
-        console.log("10개 문제에 대한 AI 검증을 병렬로 시작합니다...");
-        const verificationPromises = quizData.map((item, index) => 
-            getAIVerification(item).then(result => ({ index, result }))
-        );
-
-        const results = await Promise.all(verificationPromises);
-        console.log("AI 검증이 완료되었습니다.");
-        
-        const newVerificationResults = results.reduce((acc, { index, result }) => {
-            acc[index] = result;
-            return acc;
-        }, {} as Record<number, string>);
-        
-        setVerificationResults(newVerificationResults);
-
+        console.log("모든 문제에 대한 AI 검증을 스트리밍으로 시작합니다...");
+        for await (const verification of getAIVerificationStream(quizData)) {
+            setVerificationResults(prev => ({
+                ...prev,
+                [verification.index]: verification.result,
+            }));
+        }
+        console.log("AI 검증 스트리밍이 완료되었습니다.");
     } catch(e) {
         console.error("AI 검증 중 오류 발생:", e);
         const errorMessage = "AI 검증 중 오류가 발생했습니다.";
@@ -134,15 +110,13 @@ const App: React.FC = () => {
       setError(null);
   };
   
-  const isQuizFinished = !isLoading && quizData.length > 0 && quizData.every((_, index) => (userAnswers[index] || []).length === 2);
+  const isQuizFinished = !isLoading && quizData.length === COMPETENCIES.length && quizData.every((_, index) => (userAnswers[index] || []).length === 2);
 
   const renderContent = () => {
     if (appState === 'home') {
       return <HomeScreen onStartQuiz={handleGenerateQuiz} isLoading={isLoading} />;
     }
-    if (isLoading) {
-      return <Loader />;
-    }
+    
     if (error) {
       return (
         <div className="text-center">
@@ -166,7 +140,8 @@ const App: React.FC = () => {
             verificationResult={verificationResults[index]}
           />
         ))}
-        {!showResults && isQuizFinished && (
+        {isLoading && <Loader />}
+        {!isLoading && !showResults && isQuizFinished && (
             <button onClick={handleShowResults} className="w-full bg-green-600 text-white font-bold py-4 px-6 rounded-lg hover:bg-green-700 transition-all text-xl animate-fade-in">
               결과 확인하기 {user && '(결과가 저장됩니다)'}
             </button>
@@ -203,16 +178,11 @@ const App: React.FC = () => {
                 <button onClick={() => setIsGuideModalOpen(true)} className="text-white font-medium py-2 px-4 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base" aria-label="이용안내 보기">
                     이용안내
                 </button>
-                {isFirebaseConfigured && <Auth user={user} />}
+                <Auth user={user} />
             </div>
         </header>
 
         <main>
-          {!isFirebaseConfigured && (
-              <div className="bg-yellow-900/50 border border-yellow-700 text-yellow-200 p-4 rounded-lg text-center mb-8">
-                  <strong>주의:</strong> Firebase 설정이 완료되지 않았습니다. 로그인 및 결과 저장 기능이 비활성화됩니다.
-              </div>
-          )}
           {renderContent()}
         </main>
       </div>

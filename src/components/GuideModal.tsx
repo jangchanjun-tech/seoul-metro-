@@ -45,7 +45,7 @@ const GuideModal: React.FC<GuideModalProps> = ({ onClose }) => {
         <div className="space-y-4 text-gray-300 text-left leading-relaxed">
           <div className="flex items-start">
             <span className="bg-indigo-600 text-white rounded-full w-6 h-6 flex-shrink-0 flex items-center justify-center font-bold mr-3">1</span>
-            <p><strong>'실전 모의고사 시작하기'</strong> 버튼을 누르면 즉시 퀴즈가 시작됩니다. AI가 백그라운드에서 미리 문제를 준비해두어 기다릴 필요가 없습니다.</p>
+            <p><strong>'실전 모의고사 시작하기'</strong> 버튼을 눌러주세요. AI가 5가지 역량에 대한 총 10개의 문제를 생성하며, 약 30초 정도 소요될 수 있습니다.</p>
           </div>
           <div className="flex items-start">
             <span className="bg-indigo-600 text-white rounded-full w-6 h-6 flex-shrink-0 flex items-center justify-center font-bold mr-3">2</span>
@@ -55,15 +55,9 @@ const GuideModal: React.FC<GuideModalProps> = ({ onClose }) => {
             <span className="bg-indigo-600 text-white rounded-full w-6 h-6 flex-shrink-0 flex items-center justify-center font-bold mr-3">3</span>
             <p>10문제를 모두 풀면 <strong>'결과 확인하기'</strong> 버튼이 활성화됩니다. 버튼을 누르면 정답, 상세 해설, 그리고 AI의 검증 결과를 볼 수 있습니다.</p>
           </div>
-          <div className="flex items-start">
+           <div className="flex items-start">
             <span className="bg-indigo-600 text-white rounded-full w-6 h-6 flex-shrink-0 flex items-center justify-center font-bold mr-3">4</span>
-            <p><strong>Google 계정으로 로그인</strong>하면 모의고사 결과가 자동으로 저장되어 학습 기록을 관리할 수 있습니다.</p>
-          </div>
-           <div className="flex items-start text-sm text-gray-400 pt-2 border-t border-gray-700/50">
-            <span className="font-bold mr-2 mt-0.5">*</span>
-            <p>
-              (참고: 처음 방문했거나 캐시가 비어있는 경우에만 약 30초간 문제를 생성할 수 있습니다.)
-            </p>
+            <p><strong>로그인</strong>하면 모의고사 결과가 자동으로 저장되어 학습 기록을 관리할 수 있습니다.</p>
           </div>
         </div>
         <button
