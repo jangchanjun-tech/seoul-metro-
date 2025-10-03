@@ -163,6 +163,12 @@ const App: React.FC = () => {
   const [elapsedTime, setElapsedTime] = useState(0); // 타이머 상태 추가
   const mainRef = useRef<HTMLElement>(null);
   
+  const formatTime = (timeInSeconds: number) => {
+    const minutes = Math.floor(timeInSeconds / 60);
+    const seconds = timeInSeconds % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
         if (currentUser) {
@@ -182,9 +188,8 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // FIX: Replaced `NodeJS.Timeout` with `ReturnType<typeof setInterval>` to correctly type the interval ID in a browser environment, resolving the TypeScript namespace error.
     let timerInterval: ReturnType<typeof setInterval> | null = null;
-    if (appState === 'quiz' && !isLoading && !isGeneratingMore && quizData.length > 0 && !showResults) {
+    if (appState === 'quiz' && !isLoading && quizData.length > 0 && !showResults) {
       timerInterval = setInterval(() => {
         setElapsedTime(prevTime => prevTime + 1);
       }, 1000);
@@ -194,7 +199,7 @@ const App: React.FC = () => {
         clearInterval(timerInterval);
       }
     };
-  }, [appState, isLoading, isGeneratingMore, quizData.length, showResults]);
+  }, [appState, isLoading, quizData.length, showResults]);
   
   useEffect(() => {
     const handleContextmenu = (e: MouseEvent) => e.preventDefault();
@@ -389,10 +394,20 @@ const App: React.FC = () => {
         {showResults && (
           <div className="text-center bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6 animate-fade-in">
               <h2 className="text-2xl font-bold text-indigo-300">최종 결과</h2>
-              <p className="text-4xl font-extrabold my-3">
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-teal-400">{calculateScore()}</span>
-                  <span className="text-xl text-gray-400"> 점</span>
-              </p>
+              <div className="flex justify-center items-center gap-8 my-4">
+                  <div>
+                      <p className="text-sm text-gray-400 uppercase tracking-wider">총 소요 시간</p>
+                      <p className="text-3xl font-bold text-white font-mono">{formatTime(elapsedTime)}</p>
+                  </div>
+                  <div className="border-l border-gray-600 h-16"></div>
+                  <div>
+                      <p className="text-sm text-gray-400 uppercase tracking-wider">최종 점수</p>
+                      <p className="text-4xl font-extrabold">
+                          <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-teal-400">{calculateScore()}</span>
+                          <span className="text-xl text-gray-400"> 점</span>
+                      </p>
+                  </div>
+              </div>
               <button onClick={handleGoHome} className="mt-4 bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all">
                 홈으로 돌아가기
               </button>
@@ -404,7 +419,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-indigo-900/60 p-4 sm:p-6 md:p-8">
-      {appState === 'quiz' && !showResults && <QuizTimer elapsedTime={elapsedTime} />}
+      {appState === 'quiz' && !showResults && quizData.length > 0 && <QuizTimer elapsedTime={elapsedTime} />}
       <div className="max-w-6xl mx-auto">
         <header className="flex justify-between items-center mb-8">
             <div className="text-left cursor-pointer" onClick={() => user && appState === 'home' ? undefined : handleGoHome()}>
