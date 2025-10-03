@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth, isFirebaseInitialized } from './firebase/config';
+import { auth, db, isFirebaseInitialized } from './firebase/config';
+import { doc, getDoc } from 'firebase/firestore';
 import { isGeminiInitialized, generateSingleQuiz, shuffleArray, getAIVerification } from './services/geminiService';
 import { saveQuizResult, getQuestionCountsByCompetency, savePreGeneratedQuestion, ensureUserDocument, incrementUserAttemptCount, fetchRandomPreGeneratedQuestions, updateSystemStatsAfterQuiz } from './services/firebaseService';
 import { QuizItem, User, QuizResult, AdminStats } from './types';
@@ -16,11 +17,6 @@ import Dashboard from './components/Dashboard';
 import AdminPanel from './components/AdminPanel';
 
 type AppState = 'home' | 'loading' | 'quiz' | 'results' | 'dashboard' | 'review' | 'admin';
-
-// =================================================================================
-// 중요: 이 곳에 Firebase에 등록된 관리자 계정의 UID를 입력하세요.
-// =================================================================================
-const ADMIN_UIDS = ['GoK2Ltn3G9Rt3JWh1uWZ3y739C93IN_UID_HERE']; 
 
 const COMPETENCIES = [
     '지휘감독능력', '책임감 및 적극성', '관리자로서의 자세 및 청렴도', 
@@ -60,7 +56,7 @@ const App: React.FC = () => {
 
     // Authentication Listener & Admin Check
     useEffect(() => {
-        if (!isFirebaseInitialized) {
+        if (!isFirebaseInitialized || !auth || !db) {
             setError("로그인/데이터베이스 서비스가 초기화되지 않았습니다. Firebase 환경 변수 설정을 확인해주세요.");
             setIsAuthLoading(false);
             return;
@@ -71,14 +67,22 @@ const App: React.FC = () => {
                     email: currentUser.email,
                     displayName: currentUser.displayName,
                 });
-                // Check if the logged-in user's UID is in the admin list.
-                if (ADMIN_UIDS.includes(currentUser.uid)) {
-                    setIsAdmin(true);
-                } else {
-                    setIsAdmin(false);
+                
+                // Firestore에서 사용자 역할을 확인하여 관리자 여부 결정
+                try {
+                    const userDocRef = doc(db, 'users', currentUser.uid);
+                    const userDocSnap = await getDoc(userDocRef);
+                    if (userDocSnap.exists() && userDocSnap.data().role === 'admin') {
+                        setIsAdmin(true);
+                    } else {
+                        setIsAdmin(false);
+                    }
+                } catch (error) {
+                    console.error("관리자 권한 확인 중 오류 발생:", error);
+                    setIsAdmin(false); // 에러 발생 시 안전하게 비관리자로 처리
                 }
             } else {
-                // Clear admin status on logout
+                // 로그아웃 시 관리자 상태 초기화
                 setIsAdmin(false);
             }
             setUser(currentUser);
@@ -120,7 +124,7 @@ const App: React.FC = () => {
             return;
         }
         if (!isGeminiInitialized) {
-            setError("AI 서비스가 초기화되지 않았습니다. API_KEY 환경 변수를 확인해주세요.");
+            setError("AI 서비스가 초기화되지 않았습니다. VITE_API_KEY 환경 변수가 올바르게 설정되었는지 확인해주세요.");
             return;
         }
         setIsLoading(true);
