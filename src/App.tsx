@@ -17,6 +17,11 @@ import AdminPanel from './components/AdminPanel';
 
 type AppState = 'home' | 'loading' | 'quiz' | 'results' | 'dashboard' | 'review' | 'admin';
 
+// =================================================================================
+// 중요: 이 곳에 Firebase에 등록된 관리자 계정의 UID를 입력하세요.
+// =================================================================================
+const ADMIN_UIDS = ['GoK2Ltn3G9Rt3JWh1uWZ3y739C93IN_UID_HERE']; 
+
 const COMPETENCIES = [
     '지휘감독능력', '책임감 및 적극성', '관리자로서의 자세 및 청렴도', 
     '경영의식 및 혁신성', '업무의 이해도 및 상황대응력'
@@ -66,14 +71,15 @@ const App: React.FC = () => {
                     email: currentUser.email,
                     displayName: currentUser.displayName,
                 });
-                // Check for admin status in local storage when user is loaded
-                if (localStorage.getItem('isAdmin') === 'true') {
+                // Check if the logged-in user's UID is in the admin list.
+                if (ADMIN_UIDS.includes(currentUser.uid)) {
                     setIsAdmin(true);
+                } else {
+                    setIsAdmin(false);
                 }
             } else {
                 // Clear admin status on logout
                 setIsAdmin(false);
-                localStorage.removeItem('isAdmin');
             }
             setUser(currentUser);
             setIsAuthLoading(false);
@@ -297,28 +303,12 @@ const App: React.FC = () => {
         }
     };
     
-    const promptForAdmin = () => {
-        if (!user) {
-            alert("관리자 모드를 활성화하려면 먼저 로그인해주세요.");
-            setIsAuthModalOpen(true);
-            return;
-        }
-        const key = prompt('관리자 모드를 활성화하려면 인증 키를 입력하세요:');
-        if (key === 'smc-admin-2024') {
-            localStorage.setItem('isAdmin', 'true');
-            setIsAdmin(true);
-            alert('관리자 모드가 활성화되었습니다. 이제 헤더에서 관리자 페이지로 이동할 수 있습니다.');
-        } else if (key) {
-            alert('인증 키가 올바르지 않습니다.');
-        }
-    };
-
     const renderContent = () => {
         switch (appState) {
             case 'loading': return <Loader />;
             case 'quiz':
             case 'results': {
-                if (quizData.length === 0) return <HomeScreen onStartQuiz={startQuiz} isLoading={isLoading} onEnableAdmin={promptForAdmin} />;
+                if (quizData.length === 0) return <HomeScreen onStartQuiz={startQuiz} isLoading={isLoading} />;
                 const currentQuestion = quizData[currentQuestionIndex];
                 return (
                     <div className="w-full max-w-4xl mx-auto space-y-6">
@@ -365,7 +355,7 @@ const App: React.FC = () => {
                     </div>
                  );
             }
-            case 'home': default: return <HomeScreen onStartQuiz={startQuiz} isLoading={isLoading} onEnableAdmin={promptForAdmin} />;
+            case 'home': default: return <HomeScreen onStartQuiz={startQuiz} isLoading={isLoading} />;
         }
     };
     
