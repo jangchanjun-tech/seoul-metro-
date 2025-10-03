@@ -218,12 +218,16 @@ const App: React.FC = () => {
         console.log("2단계: AI로 나머지 5문제 백라운드 생성 시작...");
 
         const aiPromises = COMPETENCIES.slice(0, 5).map(competency => 
-            generateSingleQuiz(competency).then(newQuestion => {
-                setQuizData(prevData => [...prevData, {...newQuestion, options: shuffleArray(newQuestion.options)}]);
-                return newQuestion;
-            })
+            generateSingleQuiz(competency)
         );
         const newQuestionsFromAI = await Promise.all(aiPromises);
+
+        // Once all questions are generated, update the state in a single batch to avoid race conditions
+        setQuizData(prevData => [
+            ...prevData, 
+            ...newQuestionsFromAI.map(q => ({...q, options: shuffleArray(q.options)}))
+        ]);
+        
         setIsGeneratingMore(false);
         console.log("2단계 완료: 5개의 AI 문제 생성이 완료되었습니다.");
 

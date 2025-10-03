@@ -164,19 +164,24 @@ export const fetchInitialBankSet = async (competencies: string[], seenIds: Set<s
 
 export const saveNewQuestions = async (questions: QuizItem[]): Promise<void> => {
     const batch = writeBatch(db);
-    const statsUpdate: { [key: string]: any } = { total: increment(questions.length) };
+    const competencyCounts: { [key: string]: number } = {};
 
     questions.forEach(question => {
-        // Let Firestore generate a new ID, but we save the object which might have a client-side ID.
-        // This is fine, the client-side ID won't be saved unless it's a field in the object.
-        // We remove the client-side ID before saving to avoid confusion.
+        // We remove the client-side ID before saving to avoid confusion,
+        // letting Firestore generate its own unique document ID.
         const { id, ...questionData } = question;
         const docRef = doc(collection(db, "preGeneratedQuestions", question.competency, "questions"));
         batch.set(docRef, questionData);
 
-        const competencyKey = question.competency as keyof SystemStats;
-        statsUpdate[competencyKey] = (statsUpdate[competencyKey] || increment(0))._toFieldTransform(increment(1));
+        // Count occurrences of each competency to perform a single increment operation later.
+        competencyCounts[question.competency] = (competencyCounts[question.competency] || 0) + 1;
     });
+
+    // Prepare the stats update object.
+    const statsUpdate: { [key: string]: any } = { total: increment(questions.length) };
+    for (const competency in competencyCounts) {
+        statsUpdate[competency] = increment(competencyCounts[competency]);
+    }
 
     const statsRef = doc(db, 'systemStats', 'counts');
     batch.set(statsRef, statsUpdate, { merge: true });
