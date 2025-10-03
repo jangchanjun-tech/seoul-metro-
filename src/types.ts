@@ -15,17 +15,9 @@ export interface User {
   photoURL: string | null;
 }
 
-// FIX: Add manual type definitions for Vite environment variables
+// Add manual type definitions for Vite environment variables
 // This resolves errors related to 'import.meta.env' not being recognized by TypeScript.
 declare global {
-  // Add NodeJS namespace for process.env typing to be used for the Gemini API Key.
-  namespace NodeJS {
-    interface ProcessEnv {
-      readonly API_KEY: string;
-    }
-  }
-
-  // Define types for Vite's `import.meta.env` used for Firebase config.
   interface ImportMetaEnv {
     readonly VITE_GEMINI_API_KEY: string;
     readonly VITE_FIREBASE_API_KEY: string;
@@ -40,3 +32,6 @@ declare global {
     readonly env: ImportMetaEnv;
   }
 }
+
+// This empty export is needed to treat this file as a module.
+export {};

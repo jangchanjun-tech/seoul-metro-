@@ -1,11 +1,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { QuizItem } from '../types';
 
-// FIX: Per coding guidelines, the Gemini API key must be retrieved from process.env.API_KEY.
-const apiKey = process.env.API_KEY;
+// FIX: Vercel/Vite 환경에서 환경 변수를 올바르게 읽기 위해 `import.meta.env`를 사용합니다.
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
 if (!apiKey) {
-  throw new Error("API_KEY is not set. Please add it to your environment variables in your deployment settings.");
+  throw new Error("VITE_GEMINI_API_KEY is not set. Please add it to your environment variables in your Vercel deployment settings.");
 }
 
 const ai = new GoogleGenAI({ apiKey });
@@ -187,7 +187,7 @@ export const getAIVerificationStream = async function* (quizItems: QuizItem[]): 
         `;
 
         const response = await ai.models.generateContentStream({
-            model: "gemini-2.5-flash",
+            model: "gem-2.5-flash",
             contents: prompt,
             config: {
                 systemInstruction: systemInstruction,
