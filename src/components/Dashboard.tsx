@@ -208,7 +208,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
       <h1 className="text-3xl font-bold text-center text-indigo-300">마이페이지: 성과 분석 리포트</h1>
       
       <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700">
-        <h2 className="text-xl font-semibold text-white mb-4">성적 추이 분석</h2>
+        <div className="flex justify-between items-baseline mb-4">
+            <h2 className="text-xl font-semibold text-white">성적 추이 분석</h2>
+            {userResults.length > 0 && (
+                <div className="text-sm text-gray-400">
+                    <span className="font-semibold">마지막 회차 점수: </span>
+                    <span className="font-bold text-indigo-400 text-lg">{userResults[0].score}점</span>
+                </div>
+            )}
+        </div>
         <ScoreTrendChart results={userResults} />
       </div>
 
