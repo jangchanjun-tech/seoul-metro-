@@ -45,11 +45,14 @@ const QuizCard: React.FC<QuizCardProps> = ({ quizItem, questionIndex, userAnswer
         : 'bg-gray-700 border-2 border-green-500'; // 최선인데 선택 안함
     }
     
+    // 최선이 아닌 답변
     if (isSelected) {
-      return 'bg-red-700 ring-2 ring-red-400'; // 최선이 아닌데 선택함
+      // 빨간색 대신 중립적인 회색 테두리로 변경하여 사용자의 선택임을 표시
+      return 'bg-gray-700 ring-2 ring-gray-500'; 
     }
     
-    return 'bg-gray-700 opacity-60'; // 그 외
+    // 그 외 (최선도 아니고, 선택하지도 않은 답변)
+    return 'bg-gray-700 opacity-60';
   };
 
   const isCorrect = showResults && userAnswers.some(ans => quizItem.bestAnswers.includes(ans));
@@ -75,14 +78,20 @@ const QuizCard: React.FC<QuizCardProps> = ({ quizItem, questionIndex, userAnswer
       <div className="grid grid-cols-1 gap-3">
         {quizItem.options.map((option, index) => {
            const type = showResults ? getOptionType(option) : null;
+           const isSelected = userAnswers.includes(option);
            return (
             <div key={index} className="flex items-center gap-3">
               <button
                 onClick={() => onToggleAnswer(questionIndex, option)}
-                disabled={showResults || (!userAnswers.includes(option) && userAnswers.length >= 2)}
-                className={`flex-grow text-left p-4 rounded-lg transition-all duration-300 transform hover:scale-105 disabled:cursor-not-allowed disabled:transform-none disabled:opacity-70 ${getOptionClass(option)}`}
+                disabled={showResults || (!isSelected && userAnswers.length >= 2)}
+                className={`flex-grow text-left p-4 rounded-lg transition-all duration-300 transform hover:scale-105 disabled:cursor-not-allowed disabled:transform-none disabled:opacity-70 flex justify-between items-center ${getOptionClass(option)}`}
               >
-                {option}
+                <span>{option}</span>
+                {showResults && isSelected && (
+                  <span className="flex-shrink-0 text-xs font-semibold bg-indigo-500/30 text-indigo-300 border border-indigo-400/50 px-2 py-0.5 rounded-full">
+                    나의 선택
+                  </span>
+                )}
               </button>
               {type && (
                 <span className={`flex-shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border ${getTypeLabelClass(type)}`}>
