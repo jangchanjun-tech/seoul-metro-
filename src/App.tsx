@@ -52,9 +52,10 @@ const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
         fetchStats();
     }, [fetchStats]);
 
-    const startGeneration = async () => {
+    const startGeneration = () => {
         addLog("문제 생성을 시작합니다...");
         setIsGenerating(true);
+        isGeneratingRef.current = true; // FIX: Set ref immediately to prevent timing issue
 
         const generationLoop = async () => {
             if (!isGeneratingRef.current) {
@@ -196,36 +197,26 @@ const App: React.FC = () => {
 
     try {
         const userId = auth.currentUser.uid;
-        
-        // Goal: 10 questions total (2 per competency).
-        // For each competency: 1 from bank, 1 from real-time AI.
-
-        // 1. Get user's seen question IDs
         const seenIds = await getSeenQuestionIds(userId);
 
-        const allPromises = COMPETENCIES.map(async (competency) => {
-            const bankPromise = fetchBankQuestions(competency, 1, seenIds);
-            const realtimePromise = generateSingleQuiz(competency);
-            
-            const [bankResult, realtimeResult] = await Promise.all([bankPromise, realtimePromise]);
-            
-            return { bank: bankResult, realtime: realtimeResult };
+        const questionPromises = COMPETENCIES.map(async (competency) => {
+            const bankQuestions = await fetchBankQuestions(competency, 1, seenIds);
+            const realtimeQuestion = await generateSingleQuiz(competency);
+            return { bank: bankQuestions, realtime: realtimeQuestion };
         });
 
-        const results = await Promise.all(allPromises);
-
+        const results = await Promise.all(questionPromises);
+        
         const bankQuestions = results.flatMap(r => r.bank);
         const newRawQuestions = results.map(r => r.realtime);
 
-        // Save new real-time questions to the bank
         const newSavedQuestions = await saveNewQuestions(newRawQuestions);
 
-        // Combine and start quiz
-        const finalQuizSet = [...bankQuestions, ...newSavedQuestions];
-        
-        const shuffledQuizSet = shuffleArray(finalQuizSet).map(q => ({...q, options: shuffleArray(q.options)}));
+        const combined = [...bankQuestions, ...newSavedQuestions];
+        const finalQuizSet = shuffleArray(combined).map(q => ({...q, options: shuffleArray(q.options)}));
 
-        setQuizData(shuffledQuizSet);
+        setQuizData(finalQuizSet);
+        
     } catch (err) {
       setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
     } finally {
