@@ -1,3 +1,5 @@
+import { Timestamp } from "firebase/firestore";
+
 export interface QuizItem {
   passage: string;
   question: string;
@@ -14,6 +16,18 @@ export interface User {
   email: string | null;
   photoURL: string | null;
 }
+
+export interface QuizResult {
+  id: string;
+  userId: string;
+  userName: string;
+  topic: string;
+  quizData: QuizItem[];
+  score: number;
+  totalQuestions: number;
+  createdAt: Timestamp | null;
+}
+
 
 // Add manual type definitions for Vite environment variables
 // This resolves errors related to 'import.meta.env' not being recognized by TypeScript.

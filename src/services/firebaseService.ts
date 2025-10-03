@@ -1,35 +1,34 @@
-import { collection, addDoc, serverTimestamp, writeBatch, doc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, writeBatch, doc, getDocs, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import { QuizItem, User } from "../types";
+import { QuizItem, User, QuizResult } from "../types";
 
 export const saveQuizResult = async (user: User, topic: string, quizData: QuizItem[], score: number) => {
     try {
-        const timestamp = serverTimestamp();
+        // serverTimestamp() is now called directly when setting the field value
         
-        // 1. Save the main quiz result with user's name
+        // 1. Save the main quiz result
         const quizResultsCollection = collection(db, "quizResults");
         await addDoc(quizResultsCollection, {
             userId: user.uid,
-            userName: user.displayName, // Store user's name/nickname
+            userName: user.displayName,
             topic: topic,
             quizData: quizData,
             score: score,
             totalQuestions: quizData.length,
-            createdAt: timestamp
+            createdAt: serverTimestamp() // Correct usage
         });
         console.log("Quiz result saved successfully!");
 
-        // 2. Archive all generated questions to a separate collection for analysis
+        // 2. Archive all generated questions into competency-specific subcollections
         const batch = writeBatch(db);
-        const questionsCollection = collection(db, "generatedQuestions");
 
         quizData.forEach(question => {
-            // FIX: To create a document reference with an auto-generated ID in Firestore v9,
-            // you must use the `doc` function on the collection reference.
-            const questionDocRef = doc(questionsCollection); // Auto-generate ID
+            const competencyQuestionsCollection = collection(db, "generatedQuestions", question.competency, "questions");
+            const questionDocRef = doc(competencyQuestionsCollection); 
+
             batch.set(questionDocRef, {
                 ...question,
-                createdAt: timestamp,
+                createdAt: serverTimestamp(), // Correct usage
                 createdBy: {
                     uid: user.uid,
                     name: user.displayName,
@@ -38,9 +37,44 @@ export const saveQuizResult = async (user: User, topic: string, quizData: QuizIt
         });
 
         await batch.commit();
-        console.log(`Archived ${quizData.length} questions to 'generatedQuestions' collection.`);
+        console.log(`Archived ${quizData.length} questions to competency-specific subcollections.`);
 
     } catch (error) {
         console.error("Error saving quiz result to Firestore: ", error);
+    }
+};
+
+// New function to fetch a specific user's quiz results
+export const getUserQuizResults = async (userId: string): Promise<QuizResult[]> => {
+    try {
+        const results: QuizResult[] = [];
+        const q = query(
+            collection(db, "quizResults"),
+            where("userId", "==", userId),
+            orderBy("createdAt", "desc")
+        );
+        const querySnapshot = await getDocs(q);
+        querySnapshot.forEach((doc) => {
+            results.push({ id: doc.id, ...doc.data() } as QuizResult);
+        });
+        return results;
+    } catch (error) {
+        console.error("Error fetching user quiz results:", error);
+        throw new Error("시험 결과를 불러오는 데 실패했습니다.");
+    }
+};
+
+// New function to fetch all quiz results for ranking
+export const getAllQuizResults = async (): Promise<QuizResult[]> => {
+    try {
+        const results: QuizResult[] = [];
+        const querySnapshot = await getDocs(collection(db, "quizResults"));
+        querySnapshot.forEach((doc) => {
+            results.push({ id: doc.id, ...doc.data() } as QuizResult);
+        });
+        return results;
+    } catch (error) {
+        console.error("Error fetching all quiz results:", error);
+        throw new Error("전체 시험 결과를 불러오는 데 실패했습니다.");
     }
 };

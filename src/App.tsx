@@ -8,9 +8,10 @@ import QuizCard from './components/QuizCard';
 import Auth from './components/Auth';
 import GuideModal from './components/GuideModal';
 import HomeScreen from './components/HomeScreen';
+import Dashboard from './components/Dashboard'; // 대시보드 컴포넌트 임포트
 import { auth } from './firebase/config';
 
-type AppState = 'home' | 'quiz';
+type AppState = 'home' | 'quiz' | 'dashboard'; // 'dashboard' 상태 추가
 const COMPETENCIES = ["지휘감독능력", "책임감 및 적극성", "관리자로서의 자세 및 청렴도", "경영의식 및 혁신성", "업무의 이해도 및 상황대응력", "지휘감독능력", "책임감 및 적극성", "관리자로서의 자세 및 청렴도", "경영의식 및 혁신성", "업무의 이해도 및 상황대응력"];
 
 const App: React.FC = () => {
@@ -79,7 +80,7 @@ const App: React.FC = () => {
   const handleShowResults = async () => {
     setShowResults(true);
     if (user && quizData.length > 0) {
-      saveQuizResult(user, "AI 실시간 모의고사", quizData, calculateScore());
+      await saveQuizResult(user, "AI 실시간 모의고사", quizData, calculateScore());
     }
     if (quizData.length === 0) return;
 
@@ -107,7 +108,7 @@ const App: React.FC = () => {
     }
   };
   
-  const handleRestart = () => {
+  const handleGoHome = () => {
       setAppState('home');
       setQuizData([]);
       setError(null);
@@ -116,6 +117,10 @@ const App: React.FC = () => {
   const isQuizFinished = !isLoading && quizData.length === COMPETENCIES.length && quizData.every((_, index) => (userAnswers[index] || []).length === 2);
 
   const renderContent = () => {
+    if (appState === 'dashboard') {
+      return <Dashboard user={user!} onGoHome={handleGoHome} />;
+    }
+    
     if (appState === 'home') {
       return <HomeScreen onStartQuiz={handleGenerateQuiz} isLoading={isLoading} />;
     }
@@ -124,7 +129,7 @@ const App: React.FC = () => {
       return (
         <div className="text-center">
           <div className="bg-red-900/50 border border-red-700 text-red-200 p-4 rounded-lg mb-4">{error}</div>
-          <button onClick={handleRestart} className="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all">홈으로 돌아가기</button>
+          <button onClick={handleGoHome} className="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all">홈으로 돌아가기</button>
         </div>
       );
     }
@@ -156,7 +161,7 @@ const App: React.FC = () => {
                   <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-teal-400">{calculateScore()}</span>
                   <span className="text-xl text-gray-400"> / {quizData.length}</span>
               </p>
-              <button onClick={handleRestart} className="mt-4 bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all">
+              <button onClick={handleGoHome} className="mt-4 bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all">
                 새로운 모의고사 풀기
               </button>
           </div>
@@ -169,7 +174,7 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-indigo-900/60 p-4 sm:p-6 md:p-8">
       <div className="max-w-4xl mx-auto">
         <header className="flex justify-between items-center mb-8">
-            <div className="text-left">
+            <div className="text-left cursor-pointer" onClick={() => user && appState !== 'home' ? setAppState('home') : null}>
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">
                     서울교통공사 AI 모의고사
                 </h1>
@@ -178,6 +183,11 @@ const App: React.FC = () => {
                 </p>
             </div>
             <div className="flex items-center gap-2 sm:gap-4">
+                {user && appState !== 'dashboard' && (
+                  <button onClick={() => setAppState('dashboard')} className="text-white font-medium py-2 px-4 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base" aria-label="마이페이지 보기">
+                    마이페이지
+                  </button>
+                )}
                 <button onClick={() => setIsGuideModalOpen(true)} className="text-white font-medium py-2 px-4 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base" aria-label="이용안내 보기">
                     이용안내
                 </button>
