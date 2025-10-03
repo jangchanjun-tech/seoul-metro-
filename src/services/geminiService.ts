@@ -2,6 +2,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { QuizItem, QuizResult, CompetencyAnalysis } from '../types';
 
 // FIX: Per coding guidelines, the API key must be obtained exclusively from `process.env.API_KEY`.
+// The API key is sourced from the environment variable `process.env.API_KEY`.
 const apiKey = process.env.API_KEY;
 
 let ai: GoogleGenAI | null = null;

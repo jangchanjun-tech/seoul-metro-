@@ -1,17 +1,4 @@
-// FIX: Removed reference to vite/client to solve "Cannot find type definition file" error.
-// As a workaround, types for `import.meta.env` are defined manually below.
-interface ImportMetaEnv {
-  readonly VITE_FIREBASE_API_KEY: string;
-  readonly VITE_FIREBASE_AUTH_DOMAIN: string;
-  readonly VITE_FIREBASE_PROJECT_ID: string;
-  readonly VITE_FIREBASE_STORAGE_BUCKET: string;
-  readonly VITE_FIREBASE_MESSAGING_SENDER_ID: string;
-  readonly VITE_FIREBASE_APP_ID: string;
-}
-
-interface ImportMeta {
-  readonly env: ImportMetaEnv;
-}
+// FIX: Manual type definitions removed. The reference to "vite/client" in `src/types.ts` now provides the correct types for `import.meta.env`.
 
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getAuth, setPersistence, browserSessionPersistence, type Auth } from "firebase/auth";
