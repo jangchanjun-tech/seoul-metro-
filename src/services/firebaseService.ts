@@ -70,44 +70,35 @@ export const getSeenQuestionIds = async (userId: string): Promise<Set<string>> =
 };
 
 export const fetchBankQuestions = async (competency: string, count: number, seenIds: Set<string>): Promise<QuizItem[]> => {
-    const questions: QuizItem[] = [];
-    
-    const q = query(
-        collection(db, "preGeneratedQuestions", competency, "questions"),
-        limit(50) 
-    );
-    
-    const snapshot = await getDocs(q);
-    const allFetched = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as QuizItem));
-    
-    const unseenQuestions = allFetched.filter(item => item.id && !seenIds.has(item.id));
-    
-    if (unseenQuestions.length >= count) {
-        for (let i = unseenQuestions.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [unseenQuestions[i], unseenQuestions[j]] = [unseenQuestions[j], unseenQuestions[i]];
-        }
-        questions.push(...unseenQuestions.slice(0, count));
-        return questions;
-    }
-
-    questions.push(...unseenQuestions);
-    const needed = count - questions.length;
-    if (needed > 0) {
-        const seenQuestions = allFetched.filter(item => item.id && seenIds.has(item.id) && !questions.some(q => q.id === item.id));
+    try {
+        const q = query(
+            collection(db, "preGeneratedQuestions", competency, "questions"),
+            limit(50) // 한 번에 충분한 양을 가져와 클라이언트에서 필터링
+        );
         
-        for (let i = seenQuestions.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [seenQuestions[i], seenQuestions[j]] = [seenQuestions[j], seenQuestions[i]];
+        const snapshot = await getDocs(q);
+        const allFetched = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as QuizItem));
+        
+        // 사용자가 보지 않은 문제만 필터링
+        const unseenQuestions = allFetched.filter(item => item.id && !seenIds.has(item.id));
+        
+        // 만약 보지 않은 문제가 있다면, 랜덤하게 섞어서 필요한 만큼 반환
+        if (unseenQuestions.length > 0) {
+            for (let i = unseenQuestions.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [unseenQuestions[i], unseenQuestions[j]] = [unseenQuestions[j], unseenQuestions[i]];
+            }
+            return unseenQuestions.slice(0, count);
         }
-        questions.push(...seenQuestions.slice(0, needed));
-    }
     
-    if (questions.length < count) {
-        console.warn(`'${competency}' 역량 문제 은행에 문제가 부족합니다. (${questions.length}/${count}개)`);
-    }
+        // 보지 않은 문제가 없다면 빈 배열을 반환하여 100% 실시간 생성 모드로 유도
+        return [];
 
-    return questions;
+    } catch (error) {
+        console.error(`'${competency}' 역량의 문제 은행 호출 중 오류:`, error);
+        // 오류 발생 시에도 빈 배열을 반환하여 앱 중단 방지
+        return [];
+    }
 };
 
 

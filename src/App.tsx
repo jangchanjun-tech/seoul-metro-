@@ -69,16 +69,16 @@ const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
             }
 
             const currentStats = await getSystemStats(); // Get latest stats inside loop
-            if (currentStats.total >= 5000) {
-                if(workerId === 1) addLog("목표 5,000개에 도달하여 생성을 자동 중단합니다.");
+            if (currentStats.total >= 50000) {
+                if(workerId === 1) addLog("목표 50,000개에 도달하여 생성을 자동 중단합니다.");
                 setIsGenerating(false);
                 return;
             }
             
-            const underfilledCompetencies = COMPETENCIES.filter(c => currentStats[c] < 1000);
+            const underfilledCompetencies = COMPETENCIES.filter(c => currentStats[c] < 10000);
 
             if (underfilledCompetencies.length === 0) {
-                if(workerId === 1) addLog("모든 역량이 1,000개를 달성했습니다. 생성을 중단합니다.");
+                if(workerId === 1) addLog("모든 역량이 10,000개를 달성했습니다. 생성을 중단합니다.");
                 setIsGenerating(false);
                 return;
             }
@@ -116,9 +116,9 @@ const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
                 <h2 className="text-lg font-semibold text-white mb-3">현재 문제 수</h2>
                 {stats ? (
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-center">
-                        <div className="bg-gray-800 p-3 rounded"><p className="text-gray-400">총 문제</p><p className="text-xl font-bold text-indigo-400">{stats.total} / 5000</p></div>
+                        <div className="bg-gray-800 p-3 rounded"><p className="text-gray-400">총 문제</p><p className="text-xl font-bold text-indigo-400">{stats.total} / 50000</p></div>
                         {COMPETENCIES.map(c => (
-                            <div key={c} className="bg-gray-800 p-3 rounded"><p className="text-gray-400 text-sm">{c}</p><p className="text-xl font-bold">{stats[c]} / 1000</p></div>
+                            <div key={c} className="bg-gray-800 p-3 rounded"><p className="text-gray-400 text-sm">{c}</p><p className="text-xl font-bold">{stats[c]} / 10000</p></div>
                         ))}
                     </div>
                 ) : <p>통계 로딩 중...</p>}
@@ -207,28 +207,42 @@ const App: React.FC = () => {
         const userId = auth.currentUser.uid;
         const seenIds = await getSeenQuestionIds(userId);
 
-        const promises = COMPETENCIES.map(async (competency) => {
-            const bankPromise = fetchBankQuestions(competency, 1, seenIds);
-            const realtimePromise = generateSingleQuiz(competency);
-            const [bankQuestions, realtimeQuestion] = await Promise.all([bankPromise, realtimePromise]);
-            return { bank: bankQuestions, realtime: realtimeQuestion };
-        });
+        // 1. 문제 은행에서 과목별로 1개씩, 풀어보지 않은 문제를 가져오기 시도
+        const bankFetchPromises = COMPETENCIES.map(competency => 
+            fetchBankQuestions(competency, 1, seenIds)
+        );
+        const bankResults = await Promise.all(bankFetchPromises);
+        const bankQuestions = bankResults.flat();
 
-        const results = await Promise.all(promises);
-        
-        const bankQuestions = results.flatMap(r => r.bank);
-        const newRawQuestions = results.map(r => r.realtime);
+        let finalQuizSet: QuizItem[] = [];
 
-        const newSavedQuestions = await saveNewQuestions(newRawQuestions);
+        // 2. 문제 은행에서 5개를 모두 성공적으로 가져왔는지 확인
+        if (bankQuestions.length === COMPETENCIES.length) {
+            // 성공: 하이브리드 모드 (문제 은행 5개 + 실시간 AI 5개)
+            console.log("문제 은행에 충분한 문제가 있어 하이브리드 모드로 출제합니다.");
+            const realtimePromises = COMPETENCIES.map(c => generateSingleQuiz(c));
+            const newRawQuestions = await Promise.all(realtimePromises);
+            
+            const newSavedQuestions = await saveNewQuestions(newRawQuestions);
+            const combined = [...bankQuestions, ...newSavedQuestions];
+            finalQuizSet = shuffleArray(combined);
+        } else {
+            // 실패: 100% 실시간 AI 생성 모드로 전환
+            console.warn(`문제 은행에 중복되지 않는 문제가 부족하여 (필요: 5, 찾음: ${bankQuestions.length}), 100% 실시간 생성 모드로 전환합니다.`);
+            
+            const competenciesToGenerate = [...COMPETENCIES, ...COMPETENCIES]; // 총 10문제 생성
+            const realtimePromises = competenciesToGenerate.map(c => generateSingleQuiz(c));
+            const newRawQuestions = await Promise.all(realtimePromises);
 
-        const combined = [...bankQuestions, ...newSavedQuestions];
-        const finalQuizSet = shuffleArray(combined).map(q => ({...q, options: shuffleArray(q.options)}));
-        
-        if (finalQuizSet.length < 10) {
-            throw new Error(`문제 생성 중 오류가 발생하여 10개를 모두 불러오지 못했습니다. (총 ${finalQuizSet.length}개)`);
+            const newSavedQuestions = await saveNewQuestions(newRawQuestions);
+            finalQuizSet = newSavedQuestions;
         }
 
-        setQuizData(finalQuizSet);
+        if (finalQuizSet.length < 10) {
+            throw new Error(`최종 문제 생성 중 오류가 발생하여 10개를 모두 준비하지 못했습니다.`);
+        }
+        
+        setQuizData(finalQuizSet.map(q => ({...q, options: shuffleArray(q.options)})));
         
     } catch (err) {
       setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
