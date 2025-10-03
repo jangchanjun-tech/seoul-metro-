@@ -3,6 +3,7 @@ import React from 'react';
 interface HomeScreenProps {
   onStartQuiz: () => void;
   isLoading: boolean;
+  onEnableAdmin: () => void;
 }
 
 const CompetencyCard: React.FC<{ icon: React.ReactNode; title: string; description: string }> = ({ icon, title, description }) => (
@@ -17,7 +18,7 @@ const CompetencyCard: React.FC<{ icon: React.ReactNode; title: string; descripti
     </div>
 );
 
-const HomeScreen: React.FC<HomeScreenProps> = ({ onStartQuiz, isLoading }) => {
+const HomeScreen: React.FC<HomeScreenProps> = ({ onStartQuiz, isLoading, onEnableAdmin }) => {
     const competencies = [
         {
             icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m-7.5-2.962a3.75 3.75 0 015.25 0m-5.25 0a3.75 3.75 0 00-5.25 0m7.5-3.375c0-1.02.225-2.003.625-2.922m-5.625 2.922c.4-1.918 2.03-3.375 3.875-3.375s3.475 1.457 3.875 3.375M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
@@ -71,6 +72,11 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStartQuiz, isLoading }) => {
                 className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold py-4 px-6 rounded-lg hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-xl shadow-lg hover:shadow-indigo-500/50 transform hover:scale-105"
             >
                 {isLoading ? '역량평가 생성 중...' : '역량평가 시작하기'}
+            </button>
+        </div>
+        <div className="text-center mt-8">
+            <button onClick={onEnableAdmin} className="text-xs text-gray-500 hover:text-gray-400 transition-colors">
+                관리자 모드
             </button>
         </div>
     </div>

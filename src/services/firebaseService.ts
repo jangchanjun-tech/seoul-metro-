@@ -158,3 +158,39 @@ export const savePreGeneratedQuestion = async (quizItem: QuizItem): Promise<void
 
 // Firestore server timestamp
 const serverTimestamp = () => Timestamp.now();
+
+// Utility to shuffle an array (Fisher-Yates shuffle)
+const shuffleArray = <T>(array: T[]): T[] => {
+    const newArray = [...array];
+    for (let i = newArray.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+    }
+    return newArray;
+};
+
+export const fetchRandomPreGeneratedQuestions = async (competency: string, count: number): Promise<QuizItem[]> => {
+    if (!db) {
+        console.warn("Firestore is not initialized. Cannot fetch pre-generated questions.");
+        return [];
+    }
+    try {
+        const collectionPath = `preGeneratedQuestions/${competency}/questions`;
+        const q = query(collection(db, collectionPath));
+        const querySnapshot = await getDocs(q);
+        
+        if (querySnapshot.empty) {
+            return [];
+        }
+
+        const allQuestions = querySnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as QuizItem));
+        
+        const shuffledQuestions = shuffleArray(allQuestions);
+
+        return shuffledQuestions.slice(0, count);
+
+    } catch (error) {
+        console.error(`Error fetching pre-generated questions for ${competency}:`, error);
+        return []; // Return empty on error to allow fallback in App.tsx
+    }
+};

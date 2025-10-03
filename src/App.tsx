@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, isFirebaseInitialized } from './firebase/config';
 import { isGeminiInitialized, generateSingleQuiz, shuffleArray, getAIVerification } from './services/geminiService';
-import { saveQuizResult, getQuestionCountsByCompetency, savePreGeneratedQuestion, ensureUserDocument, incrementUserAttemptCount } from './services/firebaseService';
+import { saveQuizResult, getQuestionCountsByCompetency, savePreGeneratedQuestion, ensureUserDocument, incrementUserAttemptCount, fetchRandomPreGeneratedQuestions } from './services/firebaseService';
 import { QuizItem, User, QuizResult, AdminStats } from './types';
 
 // Components
@@ -21,11 +21,6 @@ const COMPETENCIES = [
     '지휘감독능력', '책임감 및 적극성', '관리자로서의 자세 및 청렴도', 
     '경영의식 및 혁신성', '업무의 이해도 및 상황대응력'
 ];
-
-// [!!중요!!] 관리자 기능을 활성화하려면 아래 YOUR_ADMIN_UID_HERE를 본인의 Firebase UID로 교체하세요.
-// UID는 Firebase 콘솔 > Authentication > Users 탭에서 확인할 수 있습니다.
-const ADMIN_UIDS = ['YOUR_ADMIN_UID_HERE', 'ANOTHER_ADMIN_UID_HERE'];
-
 
 const App: React.FC = () => {
     const [appState, setAppState] = useState<AppState>('home');
@@ -51,12 +46,13 @@ const App: React.FC = () => {
     const [reviewResult, setReviewResult] = useState<QuizResult | null>(null);
     
     // Admin State
+    const [isAdmin, setIsAdmin] = useState(false);
     const [adminStats, setAdminStats] = useState<AdminStats>({});
     const [isAutoGenerating, setIsAutoGenerating] = useState(false);
     const autoGenIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
 
-    // Authentication Listener
+    // Authentication Listener & Admin Check
     useEffect(() => {
         if (!isFirebaseInitialized) {
             setError("로그인/데이터베이스 서비스가 초기화되지 않았습니다. Firebase 환경 변수 설정을 확인해주세요.");
@@ -69,6 +65,14 @@ const App: React.FC = () => {
                     email: currentUser.email,
                     displayName: currentUser.displayName,
                 });
+                // Check for admin status in local storage when user is loaded
+                if (localStorage.getItem('isAdmin') === 'true') {
+                    setIsAdmin(true);
+                }
+            } else {
+                // Clear admin status on logout
+                setIsAdmin(false);
+                localStorage.removeItem('isAdmin');
             }
             setUser(currentUser);
             setIsAuthLoading(false);
@@ -104,8 +108,12 @@ const App: React.FC = () => {
     }, []);
 
     const startQuiz = useCallback(async () => {
+        if (!isFirebaseInitialized) {
+            setError("데이터베이스 서비스가 초기화되지 않았습니다. Firebase 환경 변수를 확인해주세요.");
+            return;
+        }
         if (!isGeminiInitialized) {
-            setError("AI 서비스가 초기화되지 않았습니다. 만약 Vercel 등에 배포하셨다면, 프로젝트 설정에서 API_KEY 환경 변수를 추가해야 합니다.");
+            setError("AI 서비스가 초기화되지 않았습니다. API_KEY 환경 변수를 확인해주세요.");
             return;
         }
         setIsLoading(true);
@@ -113,13 +121,36 @@ const App: React.FC = () => {
         setAppState('loading');
 
         try {
-            const promises = COMPETENCIES.flatMap(comp => [
-                generateSingleQuiz(comp),
-                generateSingleQuiz(comp)
-            ]);
-            
+            // 각 역량별로 문제 은행에서 1개(없으면 실시간 생성), 실시간 AI 생성 1개를 가져옵니다.
+            const promises: Promise<QuizItem>[] = COMPETENCIES.flatMap(comp => {
+                const preGeneratedPromise = fetchRandomPreGeneratedQuestions(comp, 1)
+                    .then(questions => {
+                        if (questions.length > 0) {
+                            return questions[0];
+                        }
+                        // Fallback: 문제 은행에 문제가 없으면 실시간으로 생성
+                        console.warn(`'${comp}' 역량에 대한 사전 생성 문제가 없어 실시간으로 생성합니다.`);
+                        return generateSingleQuiz(comp);
+                    })
+                    .catch((error) => {
+                        // Fallback: 에러 발생 시에도 실시간으로 생성
+                        console.error(`'${comp}' 역량 문제 은행 로딩 실패. 실시간 생성으로 대체합니다.`, error);
+                        return generateSingleQuiz(comp);
+                    });
+
+                const liveGeneratedPromise = generateSingleQuiz(comp);
+
+                return [preGeneratedPromise, liveGeneratedPromise];
+            });
+
             const results = await Promise.all(promises);
-            setQuizData(shuffleArray(results));
+            const validResults = results.filter((item): item is QuizItem => !!item);
+
+            if (validResults.length < 10) {
+                 throw new Error(`문제 생성에 실패하여 ${validResults.length}개만 로드되었습니다. 잠시 후 다시 시도해주세요.`);
+            }
+
+            setQuizData(shuffleArray(validResults));
             
             setUserAnswers({});
             setCurrentQuestionIndex(0);
@@ -244,13 +275,29 @@ const App: React.FC = () => {
             autoGenIntervalRef.current = setInterval(autoGenerateQuestion, 60000); // every 60 seconds
         }
     };
+    
+    const promptForAdmin = () => {
+        if (!user) {
+            alert("관리자 모드를 활성화하려면 먼저 로그인해주세요.");
+            setIsAuthModalOpen(true);
+            return;
+        }
+        const key = prompt('관리자 모드를 활성화하려면 인증 키를 입력하세요:');
+        if (key === 'smc-admin-2024') {
+            localStorage.setItem('isAdmin', 'true');
+            setIsAdmin(true);
+            alert('관리자 모드가 활성화되었습니다. 이제 헤더에서 관리자 페이지로 이동할 수 있습니다.');
+        } else if (key) {
+            alert('인증 키가 올바르지 않습니다.');
+        }
+    };
 
     const renderContent = () => {
         switch (appState) {
             case 'loading': return <Loader />;
             case 'quiz':
             case 'results': {
-                if (quizData.length === 0) return <HomeScreen onStartQuiz={startQuiz} isLoading={isLoading} />;
+                if (quizData.length === 0) return <HomeScreen onStartQuiz={startQuiz} isLoading={isLoading} onEnableAdmin={promptForAdmin} />;
                 const currentQuestion = quizData[currentQuestionIndex];
                 return (
                     <div className="w-full max-w-4xl mx-auto space-y-6">
@@ -297,7 +344,7 @@ const App: React.FC = () => {
                     </div>
                  );
             }
-            case 'home': default: return <HomeScreen onStartQuiz={startQuiz} isLoading={isLoading} />;
+            case 'home': default: return <HomeScreen onStartQuiz={startQuiz} isLoading={isLoading} onEnableAdmin={promptForAdmin} />;
         }
     };
     
@@ -319,7 +366,7 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-2 sm:gap-4">
                     <button onClick={() => setIsGuideModalOpen(true)} className="text-gray-300 hover:text-white font-medium py-2 px-3 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base">이용안내</button>
                     {isFirebaseInitialized && user && <button onClick={handleGoToDashboard} className="text-gray-300 hover:text-white font-medium py-2 px-3 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base">나의 성과분석</button>}
-                    {isFirebaseInitialized && user && ADMIN_UIDS.includes(user.uid) && <button onClick={handleGoToAdmin} className="text-gray-300 hover:text-white font-medium py-2 px-3 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base">관리자</button>}
+                    {isFirebaseInitialized && user && isAdmin && <button onClick={handleGoToAdmin} className="text-yellow-400 hover:text-yellow-300 font-medium py-2 px-3 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base">관리자</button>}
                     {isFirebaseInitialized && <Auth user={user} isModalOpen={isAuthModalOpen} onToggleModal={setIsAuthModalOpen} />}
                 </div>
             </header>
