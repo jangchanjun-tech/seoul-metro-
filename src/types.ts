@@ -57,6 +57,12 @@ export interface OverallPerformanceStats {
   [key: string]: CompetencyPerformanceStat;
 }
 
+export interface AnalysisCache {
+  analysis: CompetencyAnalysis;
+  basedOnResultId: string; // ID of the latest QuizResult this analysis is based on
+  generatedAt: Timestamp;
+}
+
 
 // Add manual type definitions for Vite environment variables
 // This resolves errors related to 'import.meta.env' not being recognized by TypeScript.

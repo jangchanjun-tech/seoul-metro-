@@ -1,6 +1,6 @@
 import { collection, addDoc, serverTimestamp, writeBatch, doc, getDocs, query, where, limit, getDoc, setDoc, updateDoc, increment, runTransaction } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import { QuizItem, User, QuizResult, SystemStats, OverallPerformanceStats } from "../types";
+import { QuizItem, User, QuizResult, SystemStats, OverallPerformanceStats, AnalysisCache } from "../types";
 
 const COMPETENCIES = ["지휘감독능력", "책임감 및 적극성", "관리자로서의 자세 및 청렴도", "경영의식 및 혁신성", "업무의 이해도 및 상황대응력"];
 
@@ -241,4 +241,28 @@ export const saveSingleQuestionToBank = async (question: QuizItem): Promise<void
 
 
     await batch.commit();
+};
+
+export const getAnalysisCache = async (userId: string): Promise<AnalysisCache | null> => {
+    try {
+        const cacheRef = doc(db, `users/${userId}/analysis/summary`);
+        const cacheDoc = await getDoc(cacheRef);
+        if (cacheDoc.exists()) {
+            return cacheDoc.data() as AnalysisCache;
+        }
+        return null;
+    } catch (error) {
+        console.error("Error fetching analysis cache:", error);
+        return null; // Return null on error, don't throw
+    }
+};
+
+export const saveAnalysisCache = async (userId: string, cacheData: AnalysisCache): Promise<void> => {
+    try {
+        const cacheRef = doc(db, `users/${userId}/analysis/summary`);
+        await setDoc(cacheRef, cacheData);
+        console.log("AI analysis cache saved successfully.");
+    } catch (error) {
+        console.error("Error saving analysis cache:", error);
+    }
 };

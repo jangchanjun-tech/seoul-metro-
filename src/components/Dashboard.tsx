@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { User, QuizResult, CompetencyAnalysis, OverallPerformanceStats } from '../types';
-import { getUserQuizResults, getOverallPerformanceStats } from '../services/firebaseService';
+import { User, QuizResult, CompetencyAnalysis, AnalysisCache } from '../types';
+import { getUserQuizResults, getAnalysisCache, saveAnalysisCache } from '../services/firebaseService';
 import { generateCompetencyAnalysis } from '../services/geminiService';
 import Loader from './Loader';
+import { serverTimestamp } from 'firebase/firestore';
 
 interface DashboardProps {
   user: User;
@@ -19,7 +20,8 @@ const calculateScore = (items: any[], answers: Record<number, string[]> | undefi
     const maxPointsPerQuestion = 6;
 
     items.forEach((item, index) => {
-        const userSelection = answers[index] || [];
+        // This logic handles both array-indexed answers (from older data) and id-indexed answers
+        const userSelection = answers?.[item.id] || answers?.[index] || [];
         userSelection.forEach(answer => {
             if (item.bestAnswers.includes(answer)) totalPoints += 3;
             else if (item.secondBestAnswers.includes(answer)) totalPoints += 2;
@@ -34,7 +36,6 @@ const calculateScore = (items: any[], answers: Record<number, string[]> | undefi
 
 const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
   const [userResults, setUserResults] = useState<QuizResult[]>([]);
-  const [overallStats, setOverallStats] = useState<OverallPerformanceStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<CompetencyAnalysis | null>(null);
@@ -44,31 +45,44 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [userRes, overallRes] = await Promise.all([
-          getUserQuizResults(user.uid),
-          getOverallPerformanceStats(),
-        ]);
+        const userRes = await getUserQuizResults(user.uid);
         setUserResults(userRes);
-        setOverallStats(overallRes);
 
+        // --- AI Analysis Caching Logic ---
         if (userRes.length > 0) {
-            setIsAnalysisLoading(true);
-            try {
-                const aiAnalysis = await generateCompetencyAnalysis(userRes);
-                setAnalysis(aiAnalysis);
-            } catch (analysisError) {
-                console.error("AI Analysis Error:", analysisError);
-                // Set a default error message for analysis part
-                const errorAnalysis = COMPETENCIES.reduce((acc, comp) => {
-                    acc[comp as keyof CompetencyAnalysis] = "AI 분석 중 오류가 발생했습니다.";
-                    return acc;
-                }, {} as CompetencyAnalysis);
-                setAnalysis(errorAnalysis);
-            } finally {
+            const latestResultId = userRes[0].id;
+            const cache = await getAnalysisCache(user.uid);
+
+            if (cache && cache.basedOnResultId === latestResultId) {
+                // Use cached analysis
+                setAnalysis(cache.analysis);
                 setIsAnalysisLoading(false);
+            } else {
+                // Generate new analysis
+                setIsAnalysisLoading(true);
+                try {
+                    const aiAnalysis = await generateCompetencyAnalysis(userRes);
+                    setAnalysis(aiAnalysis);
+                    // Save the new analysis to cache
+                    const newCache: AnalysisCache = {
+                        analysis: aiAnalysis,
+                        basedOnResultId: latestResultId,
+                        generatedAt: serverTimestamp() as any, // Cast for client-side
+                    };
+                    await saveAnalysisCache(user.uid, newCache);
+                } catch (analysisError) {
+                    console.error("AI Analysis Error:", analysisError);
+                    const errorAnalysis = COMPETENCIES.reduce((acc, comp) => {
+                        acc[comp as keyof CompetencyAnalysis] = "AI 분석 중 오류가 발생했습니다.";
+                        return acc;
+                    }, {} as CompetencyAnalysis);
+                    setAnalysis(errorAnalysis);
+                } finally {
+                    setIsAnalysisLoading(false);
+                }
             }
         } else {
-             setIsAnalysisLoading(false);
+             setIsAnalysisLoading(false); // No results, no analysis needed
         }
 
       } catch (err) {
@@ -87,35 +101,47 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
         let latestScore = 0;
         if (latestResult && latestResult.userAnswers) {
             const latestItems = latestResult.quizData.filter(q => q.competency === competency);
-            latestScore = calculateScore(latestItems, latestResult.userAnswers);
+            const mappedAnswers: Record<string, string[]> = {};
+            latestItems.forEach(item => {
+                const originalIndex = latestResult.quizData.findIndex(q => q.id === item.id);
+                if(originalIndex > -1 && latestResult.userAnswers?.[originalIndex] && item.id) {
+                    mappedAnswers[item.id] = latestResult.userAnswers[originalIndex];
+                }
+            });
+            latestScore = calculateScore(latestItems, mappedAnswers);
         }
         
         // 2. User's Average Score
-        const userScoresForCompetency: number[] = [];
-        userResults.forEach(res => {
-            if(res.userAnswers){
-                const items = res.quizData.filter(q => q.competency === competency);
-                if (items.length > 0) {
-                  userScoresForCompetency.push(calculateScore(items, res.userAnswers));
+        let totalUserScore = 0;
+        let competencyAttempts = 0;
+
+        userResults.forEach(result => {
+            if (result.userAnswers) {
+                const itemsForCompetency = result.quizData.filter(q => q.competency === competency);
+                if (itemsForCompetency.length > 0) {
+                    const mappedAnswers: Record<string, string[]> = {};
+                     itemsForCompetency.forEach(item => {
+                        const originalIndex = result.quizData.findIndex(q => q.id === item.id);
+                        if(originalIndex > -1 && result.userAnswers?.[originalIndex] && item.id) {
+                            mappedAnswers[item.id] = result.userAnswers[originalIndex];
+                        }
+                    });
+                    totalUserScore += calculateScore(itemsForCompetency, mappedAnswers);
+                    competencyAttempts++;
                 }
             }
         });
-        const userAverage = userScoresForCompetency.length ? userScoresForCompetency.reduce((a, b) => a + b, 0) / userScoresForCompetency.length : 0;
 
-        // 3. All Users' Average Score
-        const competencyStats = overallStats ? overallStats[competency] : null;
-        const overallAverage = (competencyStats && competencyStats.attemptCount > 0)
-            ? competencyStats.totalScore / competencyStats.attemptCount
-            : 0;
+        const userAverage = competencyAttempts > 0 ? totalUserScore / competencyAttempts : 0;
+
 
         return {
             name: competency,
             latest: Math.round(latestScore),
-            userAverage: Math.round(userAverage),
-            overallAverage: Math.round(overallAverage)
+            userAverage: Math.round(userAverage)
         };
     });
-  }, [userResults, overallStats]);
+  }, [userResults]);
 
 
   if (loading) {
@@ -139,7 +165,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
   }
 
   const Bar = ({ value, color, label }: { value: number; color: string; label: string; }) => (
-    <div className="flex flex-col items-center w-1/3">
+    <div className="flex flex-col items-center w-2/5">
         <div className="w-full h-40 bg-gray-700/50 rounded-t-md flex items-end">
             <div className={`${color} w-full rounded-t-md`} style={{ height: `${value}%` }} title={`${label}: ${value}점`}></div>
         </div>
@@ -159,8 +185,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
                     <h3 className="font-semibold text-center text-indigo-300 mb-3">{stat.name}</h3>
                     <div className="flex justify-around items-end h-40 space-x-2">
                         <Bar value={stat.latest} color="bg-green-500" label="최근 점수" />
-                        <Bar value={stat.userAverage} color="bg-indigo-500" label="나의 평균" />
-                        <Bar value={stat.overallAverage} color="bg-purple-500" label="전체 평균" />
+                        <Bar value={stat.userAverage} color="bg-blue-500" label="나의 평균" />
                     </div>
                 </div>
             ))}
@@ -173,7 +198,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
         {isAnalysisLoading ? (
             <div className="flex items-center justify-center gap-2 text-gray-400 py-8">
                  <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                 <span>AI가 응시 기록을 바탕으로 종합 리포트를 생성하고 있습니다...</span>
+                 <span>AI가 새로운 성적을 반영하여 종합 리포트를 생성하고 있습니다...</span>
             </div>
         ) : analysis ? (
              <div className="space-y-4">
