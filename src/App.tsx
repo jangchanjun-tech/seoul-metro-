@@ -207,42 +207,46 @@ const App: React.FC = () => {
         const userId = auth.currentUser.uid;
         const seenIds = await getSeenQuestionIds(userId);
 
-        // 1. 문제 은행에서 과목별로 1개씩, 풀어보지 않은 문제를 가져오기 시도
-        const bankFetchPromises = COMPETENCIES.map(competency => 
-            fetchBankQuestions(competency, 1, seenIds)
-        );
-        const bankResults = await Promise.all(bankFetchPromises);
-        const bankQuestions = bankResults.flat();
+        console.log("지능형 하이브리드 문제 출제를 시작합니다...");
 
-        let finalQuizSet: QuizItem[] = [];
-
-        // 2. 문제 은행에서 5개를 모두 성공적으로 가져왔는지 확인
-        if (bankQuestions.length === COMPETENCIES.length) {
-            // 성공: 하이브리드 모드 (문제 은행 5개 + 실시간 AI 5개)
-            console.log("문제 은행에 충분한 문제가 있어 하이브리드 모드로 출제합니다.");
-            const realtimePromises = COMPETENCIES.map(c => generateSingleQuiz(c));
-            const newRawQuestions = await Promise.all(realtimePromises);
+        // 각 역량별로 2문제씩 생성 (은행 1 + AI 1 시도, 실패 시 AI 2)
+        const generationPromises = COMPETENCIES.map(async (competency) => {
+            // 1. 문제 은행에서 1문제 가져오기 시도
+            const bankQuestions = await fetchBankQuestions(competency, 1, seenIds);
+            const questions: QuizItem[] = [...bankQuestions];
             
-            const newSavedQuestions = await saveNewQuestions(newRawQuestions);
-            const combined = [...bankQuestions, ...newSavedQuestions];
-            finalQuizSet = shuffleArray(combined);
-        } else {
-            // 실패: 100% 실시간 AI 생성 모드로 전환
-            console.warn(`문제 은행에 중복되지 않는 문제가 부족하여 (필요: 5, 찾음: ${bankQuestions.length}), 100% 실시간 생성 모드로 전환합니다.`);
-            
-            const competenciesToGenerate = [...COMPETENCIES, ...COMPETENCIES]; // 총 10문제 생성
-            const realtimePromises = competenciesToGenerate.map(c => generateSingleQuiz(c));
-            const newRawQuestions = await Promise.all(realtimePromises);
+            // 2. 부족한 만큼 AI로 생성
+            const neededFromAI = 2 - bankQuestions.length;
+            if (neededFromAI > 0) {
+                console.log(`'${competency}' 역량: 은행 ${bankQuestions.length}개, AI ${neededFromAI}개 생성 필요.`);
+                const aiPromises = Array.from({ length: neededFromAI }, () => generateSingleQuiz(competency));
+                const newAiQuestions = await Promise.all(aiPromises);
+                questions.push(...newAiQuestions);
+            }
+            return questions;
+        });
 
-            const newSavedQuestions = await saveNewQuestions(newRawQuestions);
-            finalQuizSet = newSavedQuestions;
+        const questionsPerCompetency = await Promise.all(generationPromises);
+        const allQuestionsRaw = questionsPerCompetency.flat();
+        
+        // 3. 새로 생성된 문제만 필터링하여 은행에 저장
+        const newQuestionsToSave = allQuestionsRaw.filter(q => !q.id);
+
+        let finalQuizSet = allQuestionsRaw;
+
+        if (newQuestionsToSave.length > 0) {
+            console.log(`${newQuestionsToSave.length}개의 새로운 문제를 생성하여 문제 은행에 저장합니다...`);
+            const savedNewQuestions = await saveNewQuestions(newQuestionsToSave);
+            // ID가 부여된 저장된 문제로 교체
+            const bankQuestionsInSet = allQuestionsRaw.filter(q => q.id);
+            finalQuizSet = [...bankQuestionsInSet, ...savedNewQuestions];
         }
-
+        
         if (finalQuizSet.length < 10) {
             throw new Error(`최종 문제 생성 중 오류가 발생하여 10개를 모두 준비하지 못했습니다.`);
         }
-        
-        setQuizData(finalQuizSet.map(q => ({...q, options: shuffleArray(q.options)})));
+
+        setQuizData(shuffleArray(finalQuizSet).map(q => ({...q, options: shuffleArray(q.options)})));
         
     } catch (err) {
       setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
