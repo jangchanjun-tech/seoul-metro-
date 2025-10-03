@@ -301,12 +301,26 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
             </div>
         ) : analysis ? (
              <div className="space-y-4">
-                {COMPETENCIES.map(competency => (
-                    <div key={competency} className="bg-gray-900/50 p-4 rounded-lg">
-                        <h3 className="font-semibold text-indigo-300 mb-2">{competency}</h3>
-                        <p className="text-sm text-gray-300 leading-relaxed">{analysis[competency as keyof CompetencyAnalysis]}</p>
-                    </div>
-                ))}
+                {COMPETENCIES.map(competency => {
+                    const stat = performanceIndex.find(p => p.name === competency);
+                    const userAverage = stat ? stat.userAverage : 0;
+                    const hasAttempts = stat ? stat.hasAttempts : false;
+                    return (
+                        <div 
+                            key={competency} 
+                            className={`p-4 rounded-lg border transition-all duration-500 ${!hasAttempts || minAverage === maxAverage ? 'bg-gray-900/50 border-gray-700/50' : ''}`}
+                            style={getPerformanceColorStyle(userAverage, minAverage, maxAverage, hasAttempts)}
+                        >
+                            <h3 
+                                className={`font-semibold mb-2 ${!hasAttempts || minAverage === maxAverage ? 'text-indigo-300' : ''}`}
+                                style={getPerformanceTextStyle(userAverage, minAverage, maxAverage, hasAttempts)}
+                            >
+                                {competency}
+                            </h3>
+                            <p className="text-sm text-gray-300 leading-relaxed">{analysis[competency as keyof CompetencyAnalysis]}</p>
+                        </div>
+                    );
+                })}
             </div>
         ) : <p className="text-gray-500 text-center">분석 데이터를 생성할 수 없습니다.</p>}
       </div>
