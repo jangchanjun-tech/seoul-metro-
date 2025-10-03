@@ -92,7 +92,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
         userResults.forEach(res => {
             if(res.userAnswers){
                 const items = res.quizData.filter(q => q.competency === competency);
-                userScoresForCompetency.push(calculateScore(items, res.userAnswers));
+                if (items.length > 0) {
+                  userScoresForCompetency.push(calculateScore(items, res.userAnswers));
+                }
             }
         });
         const userAverage = userScoresForCompetency.length ? userScoresForCompetency.reduce((a, b) => a + b, 0) / userScoresForCompetency.length : 0;
@@ -102,7 +104,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
         allResults.forEach(res => {
              if(res.userAnswers){
                 const items = res.quizData.filter(q => q.competency === competency);
-                allScoresForCompetency.push(calculateScore(items, res.userAnswers));
+                 if (items.length > 0) {
+                    allScoresForCompetency.push(calculateScore(items, res.userAnswers));
+                 }
             }
         });
         const overallAverage = allScoresForCompetency.length ? allScoresForCompetency.reduce((a, b) => a + b, 0) / allScoresForCompetency.length : 0;
@@ -118,7 +122,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
 
 
   if (loading) {
-    return <div className="text-center py-10"><Loader /></div>;
+    return <div className="text-center py-10"><Loader message="성과 분석 데이터를 불러오는 중입니다..." /></div>;
   }
 
   if (error) {
