@@ -1,8 +1,5 @@
-// src/types.ts
-
 import { Timestamp } from "firebase/firestore";
 
-// FIX: Added 'export' to make the interface available in other modules.
 export interface QuizItem {
   id: string; // Firestore document ID or client-side UUID
   passage: string;
@@ -15,8 +12,6 @@ export interface QuizItem {
   competency: string;
 }
 
-// Add User type from Firebase for type safety
-// FIX: Added 'export' to make the interface available in other modules.
 export interface User {
   uid: string;
   displayName: string | null;
@@ -25,21 +20,18 @@ export interface User {
   generationCount?: number;
 }
 
-// FIX: Added 'export' to make the interface available in other modules.
 export interface QuizResult {
   id: string;
   userId: string;
   userName: string;
   topic: string;
   quizData: QuizItem[];
-  // 사용자의 답변을 문제의 고유 ID를 키로 사용하여 저장
   userAnswers?: Record<string, string[]>;
   score: number;
   totalQuestions: number;
   createdAt: Timestamp | null;
 }
 
-// FIX: Added 'export' to make the interface available in other modules.
 export interface SystemStats {
     total: number;
     지휘감독능력: number;
@@ -49,32 +41,26 @@ export interface SystemStats {
     '업무의 이해도 및 상황대응력': number;
 }
 
-// FIX: Added 'export' to make the type available in other modules.
 export type CompetencyAnalysis = {
     [key in keyof Omit<SystemStats, 'total'>]: string;
 };
 
-// FIX: Added 'export' to make the interface available in other modules.
 export interface CompetencyPerformanceStat {
   totalScore: number;
-  attemptCount: number; // Number of quizzes taken that include this competency
+  attemptCount: number;
 }
 
-// FIX: Added 'export' to make the interface available in other modules.
 export interface OverallPerformanceStats {
   [key: string]: CompetencyPerformanceStat;
 }
 
-// FIX: Added 'export' to make the interface available in other modules.
 export interface AnalysisCache {
   analysis: CompetencyAnalysis;
-  basedOnResultId: string; // ID of the latest QuizResult this analysis is based on
+  basedOnResultId: string;
   generatedAt: Timestamp;
 }
 
-
-// Add manual type definitions for Vite environment variables
-// This resolves errors related to 'import.meta.env' not being recognized by TypeScript.
+// Vite 환경 변수에 대한 타입 정의
 declare global {
   interface ImportMetaEnv {
     readonly VITE_GEMINI_API_KEY: string;
@@ -90,6 +76,3 @@ declare global {
     readonly env: ImportMetaEnv;
   }
 }
-
-// This empty export is needed to treat this file as a module.
-export {};
