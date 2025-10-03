@@ -1,79 +1,49 @@
-import { Timestamp } from "firebase/firestore";
+// FIX: Removed reference to "vite/client" to resolve "Cannot find type definition file" error.
+// This reference is now placed in the specific file that requires it (`src/firebase/config.ts`).
+
+import { User as FirebaseUser } from 'firebase/auth';
+
+// This merges the Firebase user type with a possible null value.
+export type User = FirebaseUser | null;
 
 export interface QuizItem {
-  id: string; // Firestore document ID or client-side UUID
+  id: string;
+  competency: string;
   passage: string;
   question: string;
   options: string[];
   bestAnswers: string[];
-  secondBestAnswers: string[]; // 차선 답변 배열
-  worstAnswer: string;       // 최악 답변
+  secondBestAnswers: string[];
+  worstAnswer: string;
   explanation: string;
-  competency: string;
-}
-
-export interface User {
-  uid: string;
-  displayName: string | null;
-  email: string | null;
-  photoURL: string | null;
-  generationCount?: number;
 }
 
 export interface QuizResult {
-  id: string;
+  id: string; // Firestore document ID
   userId: string;
-  userName: string;
-  topic: string;
   quizData: QuizItem[];
-  userAnswers?: Record<string, string[]>;
+  userAnswers: { [key: string]: string[] };
   score: number;
+  totalCorrect: number;
   totalQuestions: number;
-  createdAt: Timestamp | null;
+  elapsedTime: number;
+  submittedAt: Date;
+  competencyScores: { [key: string]: { correct: number; total: number } };
 }
 
+// For AI competency analysis
+export interface CompetencyAnalysis {
+  지휘감독능력: string;
+  '책임감 및 적극성': string;
+  '관리자로서의 자세 및 청렴도': string;
+  '경영의식 및 혁신성': string;
+  '업무의 이해도 및 상황대응력': string;
+  [key: string]: string; // For dynamic access
+}
+
+// For overall system/user statistics
 export interface SystemStats {
-    total: number;
-    지휘감독능력: number;
-    '책임감 및 적극성': number;
-    '관리자로서의 자세 및 청렴도': number;
-    '경영의식 및 혁신성': number;
-    '업무의 이해도 및 상황대응력': number;
-}
-
-export type CompetencyAnalysis = {
-    [key in keyof Omit<SystemStats, 'total'>]: string;
-};
-
-export interface CompetencyPerformanceStat {
-  totalScore: number;
-  attemptCount: number;
-}
-
-export interface OverallPerformanceStats {
-  [key: string]: CompetencyPerformanceStat;
-}
-
-export interface AnalysisCache {
-  analysis: CompetencyAnalysis;
-  basedOnResultId: string;
-  generatedAt: Timestamp;
-}
-
-// Vite 환경 변수에 대한 타입 정의
-declare global {
-  interface ImportMetaEnv {
-    readonly VITE_API_KEY: string;
-    readonly VITE_GEMINI_API_KEY: string;
-    readonly VITE_FIREBASE_API_KEY: string;
-    readonly VITE_FIREBASE_AUTH_DOMAIN: string;
-    readonly VITE_FIREBASE_PROJECT_ID: string;
-    readonly VITE_FIREBASE_STORAGE_BUCKET: string;
-    readonly VITE_FIREBASE_MESSAGING_SENDER_ID: string;
-    readonly VITE_FIREBASE_APP_ID: string;
-  }
-
-  interface ImportMeta {
-    readonly env: ImportMetaEnv;
-  }
+  totalParticipants: number;
+  averageScore: number;
+  percentile?: number; // User-specific percentile
 }

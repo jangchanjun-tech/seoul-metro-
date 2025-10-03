@@ -1,528 +1,339 @@
-// src/App.tsx
-
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { getAIVerification, shuffleArray, generateSingleQuiz, isGeminiInitialized } from './services/geminiService';
-import { 
-  saveQuizResult, 
-  getSeenQuestionIds, 
-  saveNewQuestions, 
-  updateSeenQuestions,
-  getSystemStats,
-  saveSingleQuestionToBank,
-  fetchInitialBankSet,
-  getUserData,
-  incrementUserGenerationCount,
-} from './services/firebaseService';
-import { QuizItem, User, SystemStats, QuizResult } from './types';
-import Loader from './components/Loader';
+import { auth, isFirebaseInitialized } from './firebase/config';
+import { isGeminiInitialized, generateSingleQuiz, shuffleArray, getAIVerification } from './services/geminiService';
+import { saveQuizResult } from './services/firebaseService';
+import { QuizItem, User, QuizResult } from './types';
+
+// Components
+import HomeScreen from './components/HomeScreen';
 import QuizCard from './components/QuizCard';
+import Loader from './components/Loader';
 import Auth from './components/Auth';
 import GuideModal from './components/GuideModal';
-import HomeScreen from './components/HomeScreen';
+import QuizTimer from './components/QuizTimer';
 import Dashboard from './components/Dashboard';
-import QuizTimer from './components/QuizTimer'; // 타이머 컴포넌트 import
-import { auth, isFirebaseInitialized } from './firebase/config';
 
-type AppState = 'home' | 'quiz' | 'dashboard' | 'admin' | 'review';
-const COMPETENCIES: (keyof Omit<SystemStats, 'total'>)[] = ["지휘감독능력", "책임감 및 적극성", "관리자로서의 자세 및 청렴도", "경영의식 및 혁신성", "업무의 이해도 및 상황대응력"];
+type AppState = 'home' | 'loading' | 'quiz' | 'results' | 'dashboard' | 'review';
 
-// 🚨 [중요] 보안 설정: 관리자 페이지에 접속할 사용자의 전체 Firebase UID를 여기에 입력하세요.
-// Firebase 콘솔 > Authentication > Users 탭에서 '사용자 UID'를 복사하여 아래 배열의 값을 교체하세요.
-// 예: const ADMIN_UIDS = ['Abc123xyz...'];
-const ADMIN_UIDS = ['GoK2Ltn3G9Rt3JWh1uWZ3y739C93'];
-const CONCURRENT_GENERATIONS = 5; // 병렬 생성 개수
-
-
-const AdminPanel = ({onGoHome}: {onGoHome: () => void}) => {
-    const [stats, setStats] = useState<SystemStats | null>(null);
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [logs, setLogs] = useState<string[]>([]);
-    const generationWorkers = useRef<boolean[]>([]);
-
-    const addLog = useCallback((message: string) => {
-        const timestamp = '[' + new Date().toLocaleTimeString() + ']';
-        setLogs(prev => [timestamp + ' ' + message, ...prev].slice(0, 100));
-    }, []);
-
-    const fetchStats = useCallback(async () => {
-        const currentStats = await getSystemStats();
-        setStats(currentStats);
-        return currentStats;
-    }, []);
-
-    useEffect(() => {
-        fetchStats();
-        const interval = setInterval(fetchStats, 5000); // 5초마다 통계 자동 갱신
-        return () => clearInterval(interval);
-    }, [fetchStats]);
-
-    const stopGeneration = useCallback(() => {
-        addLog("모든 생성 프로세스 중단을 요청합니다...");
-        setIsGenerating(false);
-        generationWorkers.current = Array(CONCURRENT_GENERATIONS).fill(false);
-    }, [addLog]);
-
-    const startGeneration = useCallback(() => {
-        // FIX: The '+' operator cannot be applied to type 'symbol'. Replaced with a template literal.
-        addLog(`${CONCURRENT_GENERATIONS}개의 병렬 프로세스로 문제 생성을 시작합니다...`);
-        setIsGenerating(true);
-        generationWorkers.current = Array(CONCURRENT_GENERATIONS).fill(true);
-
-        const generationLoop = async (workerId: number) => {
-            if (!generationWorkers.current[workerId - 1]) {
-                return;
-            }
-
-            const currentStats = await getSystemStats();
-            if (currentStats.total >= 50000) {
-                if(workerId === 1) addLog("목표 50,000개에 도달하여 생성을 자동 중단합니다.");
-                stopGeneration();
-                return;
-            }
-            
-            // Self-Balancing Logic: Find the competency with the fewest questions.
-            const sortedCompetencies = [...COMPETENCIES].sort((a, b) => (currentStats[a] || 0) - (currentStats[b] || 0));
-            const targetCompetency = sortedCompetencies[0];
-
-            // If the least-filled competency has reached the target, all have.
-            if ((currentStats[targetCompetency] || 0) >= 10000) {
-                if(workerId === 1) addLog("모든 역량이 10,000개를 달성했습니다. 생성을 중단합니다.");
-                stopGeneration();
-                return;
-            }
-            
-            try {
-                // FIX: Explicitly convert `targetCompetency` to a string to prevent implicit conversion errors from symbol types.
-                addLog(`[Worker ${workerId}] '${String(targetCompetency)}' 역량 문제 생성 시도...`);
-                const newQuestion = await generateSingleQuiz(targetCompetency);
-                await saveSingleQuestionToBank(newQuestion);
-                // FIX: Explicitly convert `targetCompetency` to a string to prevent implicit conversion errors from symbol types.
-                addLog(`[Worker ${workerId}] 성공: '${String(targetCompetency)}' 문제 1개 저장 완료.`);
-            } catch (error) {
-                addLog(`[Worker ${workerId}] 오류: 생성 실패. ${error instanceof Error ? error.message.substring(0, 50) : '알 수 없는 오류'}`);
-            }
-
-            // Loop
-            setTimeout(() => generationLoop(workerId), 1000 * Math.random() * workerId); 
-        };
-
-        for (let i = 1; i <= CONCURRENT_GENERATIONS; i++) {
-            generationLoop(i);
-        }
-    }, [addLog, stopGeneration]);
-
-    return (
-        <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700 animate-fade-in">
-            <h1 className="text-2xl font-bold text-center text-indigo-300 mb-6">관리자 패널: 문제 은행 생성기</h1>
-            
-            <div className="bg-gray-900/50 p-4 rounded-lg mb-6">
-                <h2 className="text-lg font-semibold text-white mb-3">현재 문제 수</h2>
-                {stats ? (
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-center">
-                        <div className="bg-gray-800 p-3 rounded"><p className="text-gray-400">총 문제</p><p className="text-xl font-bold text-indigo-400">{stats.total} / 50000</p></div>
-                        {COMPETENCIES.map(c => (
-                            <div key={String(c)} className="bg-gray-800 p-3 rounded"><p className="text-gray-400 text-sm">{String(c)}</p><p className="text-xl font-bold">{stats[c]} / 10000</p></div>
-                        ))}
-                    </div>
-                ) : <p>통계 로딩 중...</p>}
-            </div>
-
-            <div className="text-center mb-6">
-                {!isGenerating ? (
-                    <button onClick={startGeneration} className="bg-green-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-green-700 transition-all text-lg">문제 생성 시작</button>
-                ) : (
-                    <button onClick={stopGeneration} className="bg-red-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-red-700 transition-all text-lg">문제 생성 중지</button>
-                )}
-            </div>
-
-            <div className="bg-gray-900/50 p-4 rounded-lg h-64 overflow-y-auto">
-                <h3 className="font-semibold text-white mb-2">생성 로그</h3>
-                <div className="text-sm text-gray-400 space-y-1">
-                    {logs.map((log, i) => <p key={i}>{log}</p>)}
-                </div>
-            </div>
-             <div className="text-center mt-8">
-                <button onClick={onGoHome} className="bg-indigo-600 text-white font-bold py-2 px-8 rounded-lg hover:bg-indigo-700 transition-all">
-                    홈으로
-                </button>
-            </div>
-        </div>
-    );
-};
+const COMPETENCIES = [
+    '지휘감독능력', '책임감 및 적극성', '관리자로서의 자세 및 청렴도', 
+    '경영의식 및 혁신성', '업무의 이해도 및 상황대응력'
+];
 
 const App: React.FC = () => {
-  const [quizData, setQuizData] = useState<QuizItem[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isGeneratingMore, setIsGeneratingMore] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [userAnswers, setUserAnswers] = useState<Record<string, string[]>>({});
-  const [showResults, setShowResults] = useState<boolean>(false);
-  const [user, setUser] = useState<User | null>(null);
-  const [isGuideModalOpen, setIsGuideModalOpen] = useState<boolean>(false);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
-  const [appState, setAppState] = useState<AppState>('home');
-  const [verificationResults, setVerificationResults] = useState<Record<string, string>>({});
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [elapsedTime, setElapsedTime] = useState(0); // 타이머 상태 추가
-  const [reviewResult, setReviewResult] = useState<QuizResult | null>(null);
-  const mainRef = useRef<HTMLElement>(null);
-  
-  const formatTime = (timeInSeconds: number) => {
-    const minutes = Math.floor(timeInSeconds / 60);
-    const seconds = timeInSeconds % 60;
-    return String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
-  };
-
-  useEffect(() => {
-    if (!auth) return;
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-        if (currentUser) {
-            const userData = await getUserData(currentUser.uid);
-            setUser({ 
-                uid: currentUser.uid, 
-                displayName: currentUser.displayName, 
-                email: currentUser.email, 
-                photoURL: currentUser.photoURL,
-                generationCount: userData.generationCount || 0
-            });
-        } else {
-            setUser(null);
-        }
-    });
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    let timerInterval: ReturnType<typeof setInterval> | null = null;
-    if (appState === 'quiz' && !isLoading && quizData.length > 0 && !showResults) {
-      timerInterval = setInterval(() => {
-        setElapsedTime(prevTime => prevTime + 1);
-      }, 1000);
-    }
-    return () => {
-      if (timerInterval) {
-        clearInterval(timerInterval);
-      }
-    };
-  }, [appState, isLoading, quizData.length, showResults]);
-  
-  useEffect(() => {
-    const handleContextmenu = (e: MouseEvent) => e.preventDefault();
-    const handleKeydown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && ['c', 'p', 's'].includes(e.key.toLowerCase())) e.preventDefault();
-      if (e.key === 'PrintScreen') e.preventDefault();
-    };
-
-    if (appState === 'quiz') {
-      document.body.style.userSelect = 'none';
-      document.addEventListener('contextmenu', handleContextmenu);
-      document.addEventListener('keydown', handleKeydown);
-    }
-
-    return () => {
-      document.body.style.userSelect = 'auto';
-      document.removeEventListener('contextmenu', handleContextmenu);
-      document.removeEventListener('keydown', handleKeydown);
-    };
-  }, [appState]);
-
-  const handleStartQuiz = useCallback(async () => {
-    if (!isGeminiInitialized || !isFirebaseInitialized) {
-        alert("API 키가 설정되지 않아 AI 퀴즈를 생성할 수 없습니다. 프로젝트의 .env 파일을 확인해주세요.");
-        return;
-    }
-    if (!auth || !auth.currentUser) {
-      setIsAuthModalOpen(true);
-      return;
-    }
+    const [appState, setAppState] = useState<AppState>('home');
+    const [quizData, setQuizData] = useState<QuizItem[]>([]);
+    const [userAnswers, setUserAnswers] = useState<{ [key: string]: string[] }>({});
+    const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     
-    incrementUserGenerationCount(auth.currentUser.uid);
-    setUser(prevUser => prevUser ? { ...prevUser, generationCount: (prevUser.generationCount || 0) + 1 } : null);
+    // Auth & User State
+    const [user, setUser] = useState<User>(null);
+    const [isAuthLoading, setIsAuthLoading] = useState(true);
+    const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+    const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
 
-    setElapsedTime(0);
-    setIsLoading(true);
-    setIsGeneratingMore(false);
-    setError(null);
-    setQuizData([]);
-    setUserAnswers({});
-    setShowResults(false);
-    setVerificationResults({});
-    setIsVerifying(false);
-    setAppState('quiz');
+    // Results State
+    const [score, setScore] = useState(0);
+    const [totalCorrect, setTotalCorrect] = useState(0);
+    const [elapsedTime, setElapsedTime] = useState(0);
+    const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const [verificationResults, setVerificationResults] = useState<{[key: string]: string}>({});
+    const [isVerifying, setIsVerifying] = useState<{[key: string]: boolean}>({});
 
-    try {
-        const userId = auth.currentUser.uid;
-        const seenIds = await getSeenQuestionIds(userId);
-        const QUIZ_TOTAL_QUESTIONS = 10;
+    const [reviewResult, setReviewResult] = useState<QuizResult | null>(null);
 
-        console.log(`1단계: 문제 은행에서 최대 ${QUIZ_TOTAL_QUESTIONS}문제 즉시 로딩 시작...`);
-        const bankQuestions = await fetchInitialBankSet(COMPETENCIES, seenIds);
-        
-        setQuizData(bankQuestions.map(q => ({...q, options: shuffleArray(q.options)})));
-        setIsLoading(false); 
-        console.log(`1단계 완료: ${bankQuestions.length}개의 문제를 즉시 표시했습니다.`);
-
-        const questionsNeededFromAI = QUIZ_TOTAL_QUESTIONS - bankQuestions.length;
-
-        if (questionsNeededFromAI > 0) {
-            setIsGeneratingMore(true);
-            console.log(`2단계: AI로 나머지 ${questionsNeededFromAI}문제 백라운드 생성 시작...`);
-
-            // To ensure competency diversity, we pick competencies that are least represented
-            const bankCompetencyCounts = bankQuestions.reduce((acc, q) => {
-                acc[q.competency] = (acc[q.competency] || 0) + 1;
-                return acc;
-            }, {} as Record<string, number>);
-            
-            const competenciesToGenerate = [];
-            const sortedCompetencies = [...COMPETENCIES].sort((a, b) => (bankCompetencyCounts[a] || 0) - (bankCompetencyCounts[b] || 0));
-
-            for(let i = 0; i < questionsNeededFromAI; i++) {
-                competenciesToGenerate.push(sortedCompetencies[i % sortedCompetencies.length]);
+    // Authentication Listener
+    useEffect(() => {
+        if (!isFirebaseInitialized) {
+            setIsAuthLoading(false);
+            return;
+        }
+        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+            setUser(currentUser);
+            setIsAuthLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+    
+    // Timer Logic
+    useEffect(() => {
+        if (appState === 'quiz') {
+            const startTime = Date.now();
+            timerIntervalRef.current = setInterval(() => {
+                setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+            }, 1000);
+        } else if (timerIntervalRef.current) {
+            clearInterval(timerIntervalRef.current);
+            timerIntervalRef.current = null;
+        }
+        return () => {
+            if (timerIntervalRef.current) {
+                clearInterval(timerIntervalRef.current);
             }
+        };
+    }, [appState]);
 
-            const aiPromises = competenciesToGenerate.map(competency => 
-                generateSingleQuiz(competency)
-            );
+    const startQuiz = useCallback(async () => {
+        if (!isGeminiInitialized) {
+            setError("AI 서비스가 초기화되지 않았습니다. API 키 설정을 확인해주세요.");
+            return;
+        }
+        setIsLoading(true);
+        setError(null);
+        setAppState('loading');
+
+        try {
+            // Generate 2 questions for each competency
+            const promises = COMPETENCIES.flatMap(comp => [
+                generateSingleQuiz(comp),
+                generateSingleQuiz(comp)
+            ]);
             
-            const newQuestionsFromAI = await Promise.all(aiPromises);
-
-            setQuizData(prevData => shuffleArray([
-                ...prevData, 
-                ...newQuestionsFromAI.map(q => ({...q, options: shuffleArray(q.options)}))
-            ]));
+            const results = await Promise.all(promises);
+            setQuizData(shuffleArray(results));
             
-            setIsGeneratingMore(false);
-            console.log(`2단계 완료: ${questionsNeededFromAI}개의 AI 문제 생성이 완료되었습니다.`);
+            // Reset state for new quiz
+            setUserAnswers({});
+            setCurrentQuestionIndex(0);
+            setScore(0);
+            setTotalCorrect(0);
+            setElapsedTime(0);
+            setVerificationResults({});
+            setIsVerifying({});
+            
+            setAppState('quiz');
+        } catch (err: any) {
+            setError(err.message || '퀴즈 생성 중 오류가 발생했습니다.');
+            setAppState('home');
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
 
-            if (newQuestionsFromAI.length > 0) {
-                console.log("3단계: 새로 생성된 문제를 문제 은행에 저장합니다...");
-                await saveNewQuestions(newQuestionsFromAI);
-                console.log("3단계 완료: 저장이 완료되었습니다.");
-            }
+    const handleToggleAnswer = (answer: string) => {
+        const currentQuestionId = quizData[currentQuestionIndex].id;
+        const currentAnswers = userAnswers[currentQuestionId] || [];
+
+        if (currentAnswers.includes(answer)) {
+            setUserAnswers({
+                ...userAnswers,
+                [currentQuestionId]: currentAnswers.filter(a => a !== answer),
+            });
+        } else if (currentAnswers.length < 2) {
+            setUserAnswers({
+                ...userAnswers,
+                [currentQuestionId]: [...currentAnswers, answer],
+            });
+        }
+    };
+
+    const goToNextQuestion = () => {
+        if (currentQuestionIndex < quizData.length - 1) {
+            setCurrentQuestionIndex(currentQuestionIndex + 1);
+        }
+    };
+    
+    const goToPreviousQuestion = () => {
+        if (currentQuestionIndex > 0) {
+            setCurrentQuestionIndex(currentQuestionIndex - 1);
+        }
+    };
+
+    const finishQuiz = useCallback(async () => {
+        if (timerIntervalRef.current) {
+            clearInterval(timerIntervalRef.current);
         }
         
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
-      setIsLoading(false);
-      setIsGeneratingMore(false);
-    }
-  }, []);
+        let correctCount = 0;
+        let finalScore = 0;
+        const competencyScores: { [key: string]: { correct: number; total: number } } = {};
 
-  const handleToggleAnswer = (questionId: string, answer: string) => {
-    setUserAnswers(prev => {
-      const currentAnswers = prev[questionId] || [];
-      const newAnswers = currentAnswers.includes(answer) ? currentAnswers.filter(a => a !== answer) : [...currentAnswers, answer];
-      if (newAnswers.length > 2) return prev;
-      return { ...prev, [questionId]: newAnswers };
-    });
-  };
-
-  const calculateScore = useCallback(() => {
-    let totalPoints = 0;
-    const maxPointsPerQuestion = 6;
-    quizData.forEach((item) => {
-        const userSelection = userAnswers[item.id] || [];
-        userSelection.forEach(answer => {
-            if (item.bestAnswers.includes(answer)) totalPoints += 3;
-            else if (item.secondBestAnswers.includes(answer)) totalPoints += 2;
-            else if (item.worstAnswer === answer) totalPoints += 1;
+        COMPETENCIES.forEach(c => {
+            competencyScores[c] = { correct: 0, total: 0 };
         });
-    });
-    const maxTotalPoints = quizData.length * maxPointsPerQuestion;
-    return maxTotalPoints === 0 ? 0 : Math.round((totalPoints / maxTotalPoints) * 100);
-  }, [quizData, userAnswers]);
 
-  const handleShowResults = async () => {
-    setShowResults(true);
-    if (mainRef.current) mainRef.current.scrollIntoView({ behavior: 'smooth' });
+        quizData.forEach(item => {
+            const userAns = userAnswers[item.id] || [];
+            const isCorrect = userAns.length === 2 && userAns.every(ans => item.bestAnswers.includes(ans));
+            
+            competencyScores[item.competency].total += 1;
+            
+            if (isCorrect) {
+                correctCount++;
+                competencyScores[item.competency].correct += 1;
+            }
+        });
+        
+        finalScore = Math.round((correctCount / quizData.length) * 100);
+        setTotalCorrect(correctCount);
+        setScore(finalScore);
+        setAppState('results');
+        
+        // Post-hoc AI verification
+        quizData.forEach(item => {
+             if (!verificationResults[item.id]) {
+                setIsVerifying(prev => ({ ...prev, [item.id]: true }));
+                getAIVerification(item).then(result => {
+                    setVerificationResults(prev => ({...prev, [item.id]: result}));
+                }).finally(() => {
+                    setIsVerifying(prev => ({ ...prev, [item.id]: false }));
+                });
+            }
+        });
+        
+        if (user && isFirebaseInitialized) {
+            const resultToSave: Omit<QuizResult, 'id'> = {
+                userId: user.uid,
+                quizData,
+                userAnswers,
+                score: finalScore,
+                totalCorrect: correctCount,
+                totalQuestions: quizData.length,
+                elapsedTime,
+                submittedAt: new Date(),
+                competencyScores,
+            };
+            try {
+                await saveQuizResult(resultToSave);
+            } catch (error) {
+                console.error("결과 저장 실패:", error);
+            }
+        }
+    }, [quizData, userAnswers, elapsedTime, user, verificationResults]);
 
-    const finalScore = calculateScore();
-    if (user && quizData.length > 0) {
-      await saveQuizResult(user, "AI 하이브리드 모의고사", quizData, userAnswers, finalScore);
-      const questionIdsToUpdate = quizData.map(q => q.id).filter((id): id is string => !!id);
-      await updateSeenQuestions(user.uid, questionIdsToUpdate);
-    }
+    const handleGoToDashboard = () => {
+        if (user) {
+            setAppState('dashboard');
+        } else {
+            setIsAuthModalOpen(true);
+        }
+    };
 
-    if (quizData.length === 0) return;
+    const handleReview = (result: QuizResult) => {
+        setReviewResult(result);
+        setCurrentQuestionIndex(0);
+        setAppState('review');
+    };
 
-    setIsVerifying(true);
-    setVerificationResults({});
-    try {
-        const verificationPromises = quizData.map((item) =>
-            getAIVerification(item).then(result => {
-                setVerificationResults(prev => ({ ...prev, [item.id]: result }));
-            })
-        );
-        await Promise.all(verificationPromises);
-    } catch(e) {
-        console.error("AI 검증 중 오류 발생:", e);
-        const errorMessage = "AI 검증 중 오류가 발생했습니다.";
-        setVerificationResults(quizData.reduce((acc, item) => ({...acc, [item.id]: errorMessage}), {} as Record<string, string>));
-    } finally {
-        setIsVerifying(false);
+    const renderContent = () => {
+        switch (appState) {
+            case 'loading':
+                return <Loader />;
+            case 'quiz':
+            case 'results': {
+                if (quizData.length === 0) return <HomeScreen onStartQuiz={startQuiz} isLoading={isLoading} />;
+                const currentQuestion = quizData[currentQuestionIndex];
+                return (
+                    <div className="w-full max-w-4xl mx-auto space-y-6">
+                        {appState === 'quiz' && <QuizTimer elapsedTime={elapsedTime} />}
+                        <QuizCard
+                            key={currentQuestion.id}
+                            quizItem={currentQuestion}
+                            questionIndex={currentQuestionIndex}
+                            userAnswers={userAnswers[currentQuestion.id] || []}
+                            showResults={appState === 'results'}
+                            onToggleAnswer={handleToggleAnswer}
+                            isVerifying={isVerifying[currentQuestion.id] || false}
+                            verificationResult={verificationResults[currentQuestion.id]}
+                        />
+                        <div className="flex justify-between items-center mt-6 px-2">
+                           <button onClick={goToPreviousQuestion} disabled={currentQuestionIndex === 0} className="bg-gray-700 text-white font-bold py-2 px-6 rounded-lg hover:bg-gray-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed">이전</button>
+                           <span className="text-white font-semibold">{currentQuestionIndex + 1} / {quizData.length}</span>
+                           {currentQuestionIndex < quizData.length - 1 ? (
+                               <button onClick={goToNextQuestion} className="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all">다음</button>
+                           ) : (
+                               <button onClick={finishQuiz} disabled={appState === 'results'} className="bg-green-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-green-700 transition-all disabled:opacity-50">결과 확인하기</button>
+                           )}
+                        </div>
+                        {appState === 'results' && (
+                            <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl shadow-lg p-6 text-center animate-fade-in">
+                                <h2 className="text-2xl font-bold text-indigo-300 mb-2">최종 결과</h2>
+                                <p className="text-4xl font-extrabold text-white mb-4">{score}<span className="text-xl font-normal text-gray-400"> / 100</span></p>
+                                <p className="text-gray-300">{`총 ${quizData.length}문제 중 ${totalCorrect}문제를 맞혔습니다. (소요 시간: ${Math.floor(elapsedTime / 60)}분 ${elapsedTime % 60}초)`}</p>
+                                <div className="mt-6 flex justify-center gap-4">
+                                    <button onClick={() => setAppState('home')} className="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all">홈으로</button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+            case 'dashboard':
+                return <Dashboard user={user!} onReview={handleReview} onBack={() => setAppState('home')} />;
+            case 'review': {
+                 if (!reviewResult) return <p>리뷰할 데이터를 찾을 수 없습니다.</p>;
+                 const currentQuestion = reviewResult.quizData[currentQuestionIndex];
+                 return (
+                    <div className="w-full max-w-4xl mx-auto space-y-6">
+                        <h2 className="text-2xl font-bold text-center text-indigo-300">결과 다시보기 ({new Date(reviewResult.submittedAt).toLocaleString()})</h2>
+                        <QuizCard
+                            key={currentQuestion.id}
+                            quizItem={currentQuestion}
+                            questionIndex={currentQuestionIndex}
+                            userAnswers={reviewResult.userAnswers[currentQuestion.id] || []}
+                            showResults={true}
+                            onToggleAnswer={() => {}} // no-op
+                            isVerifying={false}
+                            isReviewMode={true}
+                        />
+                         <div className="flex justify-between items-center mt-6 px-2">
+                           <button onClick={goToPreviousQuestion} disabled={currentQuestionIndex === 0} className="bg-gray-700 text-white font-bold py-2 px-6 rounded-lg hover:bg-gray-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed">이전</button>
+                           <span className="text-white font-semibold">{currentQuestionIndex + 1} / {reviewResult.quizData.length}</span>
+                           {currentQuestionIndex < reviewResult.quizData.length - 1 ? (
+                               <button onClick={goToNextQuestion} className="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all">다음</button>
+                           ) : (
+                               <button onClick={() => setAppState('dashboard')} className="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all">성과분석으로</button>
+                           )}
+                        </div>
+                    </div>
+                 );
+            }
+            case 'home':
+            default:
+                return <HomeScreen onStartQuiz={startQuiz} isLoading={isLoading} />;
+        }
+    };
+    
+    if (isAuthLoading) {
+        return <div className="min-h-screen bg-gray-900 flex justify-center items-center"><Loader message="인증 정보를 확인하는 중입니다..." /></div>;
     }
-  };
-  
-  const handleGoHome = () => {
-      setAppState('home');
-      setQuizData([]);
-      setError(null);
-      setElapsedTime(0);
-      setReviewResult(null);
-  };
-  
-  const handleStartReview = (result: QuizResult) => {
-      setReviewResult(result);
-      setAppState('review');
-  };
-  
-  const isQuizFinished = quizData.length >= 10 && quizData.every((item) => (userAnswers[item.id] || []).length === 2);
-
-  const renderContent = () => {
-    if (appState === 'admin') {
-      return <AdminPanel onGoHome={handleGoHome} />;
-    }
-    if (appState === 'dashboard') {
-      return <Dashboard user={user!} onGoHome={handleGoHome} onReviewResult={handleStartReview} />;
-    }
-    if (appState === 'review' && reviewResult) {
-      return (
-        <div className="space-y-4">
-          <div className="bg-gray-800/50 p-4 rounded-xl border border-gray-700 flex justify-between items-center">
-             <div>
-                <h2 className="text-xl font-bold text-indigo-300">시험 다시보기</h2>
-                <p className="text-sm text-gray-400">
-                    {reviewResult.createdAt ? new Date(reviewResult.createdAt.toMillis()).toLocaleString() : '날짜 미상'} / 최종 점수: {reviewResult.score}점
-                </p>
-             </div>
-             <button onClick={() => setAppState('dashboard')} className="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all">
-                마이페이지로
-             </button>
-          </div>
-          {reviewResult.quizData.map((item, index) => (
-             <QuizCard
-                key={item.id}
-                quizItem={item}
-                questionIndex={index}
-                userAnswers={reviewResult.userAnswers?.[item.id] || []}
-                showResults={true}
-                onToggleAnswer={() => {}}
-                isVerifying={false}
-                isReviewMode={true}
-             />
-          ))}
-        </div>
-      );
-    }
-    if (appState === 'home') {
-      return <HomeScreen onStartQuiz={handleStartQuiz} isLoading={isLoading} />;
-    }
-    if (isLoading) {
-        return <Loader />;
-    }
-    if (error) {
-      return (
-        <div className="text-center">
-          <div className="bg-red-900/50 border border-red-700 text-red-200 p-4 rounded-lg mb-4">{error}</div>
-          <button onClick={handleGoHome} className="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all">홈으로 돌아가기</button>
-        </div>
-      );
-    }
-
-    const ResultsSummaryBlock = ({ showHomeButton = false }: { showHomeButton?: boolean }) => (
-      <div className="text-center bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl p-6 animate-fade-in">
-          <h2 className="text-2xl font-bold text-indigo-300">최종 결과</h2>
-          <div className="flex justify-center items-center gap-8 my-4">
-              <div>
-                  <p className="text-sm text-gray-400 uppercase tracking-wider">총 소요 시간</p>
-                  <p className="text-3xl font-bold text-white font-mono">{formatTime(elapsedTime)}</p>
-              </div>
-              <div className="border-l border-gray-600 h-16"></div>
-              <div>
-                  <p className="text-sm text-gray-400 uppercase tracking-wider">최종 점수</p>
-                  <p className="text-4xl font-extrabold">
-                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-teal-400">{calculateScore()}</span>
-                      <span className="text-xl text-gray-400"> 점</span>
-                  </p>
-              </div>
-          </div>
-          {showHomeButton && (
-            <button onClick={handleGoHome} className="mt-4 bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all">
-              홈으로 돌아가기
-            </button>
-          )}
-      </div>
-    );
 
     return (
-      <div className="space-y-4">
-        {showResults && <ResultsSummaryBlock />}
+        <div className="min-h-screen bg-gray-900 text-white font-sans selection:bg-indigo-500/30">
+            <div className="absolute top-0 left-0 w-full h-full bg-grid-pattern opacity-10" style={{'--grid-color': 'rgba(129, 140, 248, 0.2)', '--grid-size': '40px'} as React.CSSProperties}></div>
+            <style>
+            {`
+            .bg-grid-pattern {
+                background-image: linear-gradient(var(--grid-color) 1px, transparent 1px), linear-gradient(to right, var(--grid-color) 1px, transparent 1px);
+                background-size: var(--grid-size) var(--grid-size);
+            }
+            `}
+            </style>
+            <div className="absolute inset-0 bg-gradient-to-b from-gray-900 via-transparent to-gray-900"></div>
 
-        {quizData.map((item, index) => (
-          <QuizCard
-            key={item.id}
-            quizItem={item}
-            questionIndex={index}
-            userAnswers={userAnswers[item.id] || []}
-            showResults={showResults}
-            onToggleAnswer={(answer) => handleToggleAnswer(item.id, answer)}
-            isVerifying={isVerifying}
-            verificationResult={verificationResults[item.id]}
-          />
-        ))}
-        {isGeneratingMore && <Loader message="AI가 추가 문제를 생성하고 있습니다..." />}
-        {!isLoading && !isGeneratingMore && !showResults && isQuizFinished && (
-            <button onClick={handleShowResults} className="w-full bg-green-600 text-white font-bold py-4 px-6 rounded-lg hover:bg-green-700 transition-all text-xl animate-fade-in">
-              결과 확인하기 {user && '(결과가 저장됩니다)'}
-            </button>
-        )}
-        {showResults && <ResultsSummaryBlock showHomeButton={true} />}
-      </div>
+            <header className="relative z-20 p-4 sm:p-6 flex justify-between items-center max-w-7xl mx-auto">
+                <div className="flex items-center gap-3 cursor-pointer" onClick={() => { setAppState('home'); setCurrentQuestionIndex(0); }}>
+                    <svg className="w-8 h-8 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"></path></svg>
+                    <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">AI 역량평가</h1>
+                </div>
+                <div className="flex items-center gap-2 sm:gap-4">
+                    <button onClick={() => setIsGuideModalOpen(true)} className="text-gray-300 hover:text-white font-medium py-2 px-3 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base">이용안내</button>
+                    {isFirebaseInitialized && user && <button onClick={handleGoToDashboard} className="text-gray-300 hover:text-white font-medium py-2 px-3 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base">나의 성과분석</button>}
+                    {isFirebaseInitialized && <Auth user={user} isModalOpen={isAuthModalOpen} onToggleModal={setIsAuthModalOpen} />}
+                </div>
+            </header>
+
+            <main className="relative z-10 flex flex-col items-center justify-center p-4 sm:p-6 pt-10 sm:pt-16">
+                {error && <div className="bg-red-500/20 border border-red-500 text-red-300 p-4 rounded-lg mb-6 w-full max-w-4xl text-center">{error}</div>}
+                {renderContent()}
+            </main>
+            
+            {isGuideModalOpen && <GuideModal onClose={() => setIsGuideModalOpen(false)} />}
+        </div>
     );
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-indigo-900/60 p-4 sm:p-6 md:p-8">
-      {appState === 'quiz' && !showResults && quizData.length > 0 && <QuizTimer elapsedTime={elapsedTime} />}
-      <div className="max-w-6xl mx-auto">
-        <header className="flex justify-between items-center mb-8">
-            <div className="text-left cursor-pointer" onClick={() => user && appState === 'home' ? undefined : handleGoHome()}>
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">
-                    서울교통공사 3급 역량 평가 대비
-                </h1>
-                <p className="text-md text-gray-300 hidden sm:block">
-                    5과목의 상황판단 문제 AI로 역량을 진단하세요.
-                </p>
-            </div>
-            <div className="flex items-center gap-2 sm:gap-4">
-                {user && appState === 'home' && (
-                  <button onClick={() => setAppState('dashboard')} className="text-white font-medium py-2 px-4 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base">마이페이지</button>
-                )}
-                {user && ADMIN_UIDS.includes(user.uid) && appState === 'home' && (
-                  <button onClick={() => setAppState('admin')} className="text-white font-medium py-2 px-4 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base">관리자</button>
-                )}
-                {user && (
-                  <div className="hidden sm:flex items-center gap-2 text-sm text-gray-400 border border-gray-600 px-3 py-1.5 rounded-lg" title="총 문제 생성 횟수">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                      </svg>
-                      <span><span className="font-bold text-white">{user.generationCount || 0}</span>회 생성</span>
-                  </div>
-                )}
-                <button onClick={() => setIsGuideModalOpen(true)} className="text-white font-medium py-2 px-4 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base">이용안내</button>
-                <Auth user={user} isModalOpen={isAuthModalOpen} onToggleModal={setIsAuthModalOpen} />
-            </div>
-        </header>
-
-        <main ref={mainRef}>
-          {renderContent()}
-        </main>
-      </div>
-      {isGuideModalOpen && <GuideModal onClose={() => setIsGuideModalOpen(false)} />}
-    </div>
-  );
 };
 
 export default App;

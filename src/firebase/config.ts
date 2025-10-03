@@ -1,4 +1,6 @@
-// Types for import.meta.env are now globally available from src/types.ts.
+// FIX: Add reference to vite/client to provide types for `import.meta.env` and fix errors.
+/// <reference types="vite/client" />
+
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getAuth, setPersistence, browserSessionPersistence, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
