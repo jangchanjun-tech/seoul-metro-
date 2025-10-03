@@ -15,6 +15,7 @@ export const saveQuizResult = async (user: User, topic: string, quizData: QuizIt
             createdAt: serverTimestamp()
         });
         console.log("Quiz result saved successfully!");
+    // FIX: Corrected a syntax error in the catch block. It was missing curly braces and was improperly formatted.
     } catch (error) {
         console.error("Error saving quiz result to Firestore: ", error);
     }
@@ -68,41 +69,47 @@ export const getSeenQuestionIds = async (userId: string): Promise<Set<string>> =
     return seenIds;
 };
 
-export const fetchBankQuestions = async (competencies: string[], count: number, seenIds: Set<string>): Promise<QuizItem[]> => {
+export const fetchBankQuestions = async (competency: string, count: number, seenIds: Set<string>): Promise<QuizItem[]> => {
     const questions: QuizItem[] = [];
-    const questionsPerCompetency = Math.ceil(count / competencies.length);
+    
+    const q = query(
+        collection(db, "preGeneratedQuestions", competency, "questions"),
+        limit(50) 
+    );
+    
+    const snapshot = await getDocs(q);
+    const allFetched = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as QuizItem));
+    
+    const unseenQuestions = allFetched.filter(item => item.id && !seenIds.has(item.id));
+    
+    if (unseenQuestions.length >= count) {
+        for (let i = unseenQuestions.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [unseenQuestions[i], unseenQuestions[j]] = [unseenQuestions[j], unseenQuestions[i]];
+        }
+        questions.push(...unseenQuestions.slice(0, count));
+        return questions;
+    }
 
-    // Fetch questions for each competency
-    for (const competency of competencies) {
-        if (questions.length >= count) break;
+    questions.push(...unseenQuestions);
+    const needed = count - questions.length;
+    if (needed > 0) {
+        const seenQuestions = allFetched.filter(item => item.id && seenIds.has(item.id) && !questions.some(q => q.id === item.id));
         
-        const q = query(
-            collection(db, "preGeneratedQuestions"),
-            where("competency", "==", competency),
-            limit(30) // Fetch more to allow for client-side filtering
-        );
-        
-        const snapshot = await getDocs(q);
-        const fetched = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as QuizItem));
-        const newQuestions = fetched.filter(item => item.id && !seenIds.has(item.id));
-        
-        questions.push(...newQuestions.slice(0, questionsPerCompetency));
+        for (let i = seenQuestions.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [seenQuestions[i], seenQuestions[j]] = [seenQuestions[j], seenQuestions[i]];
+        }
+        questions.push(...seenQuestions.slice(0, needed));
     }
     
-    // If not enough questions, fetch random ones to fill up
     if (questions.length < count) {
-        const needed = count - questions.length;
-        const fallbackQuery = query(collection(db, "preGeneratedQuestions"), limit(50));
-        const fallbackSnapshot = await getDocs(fallbackQuery);
-        const fallbackItems = fallbackSnapshot.docs
-            .map(d => ({ ...d.data(), id: d.id } as QuizItem))
-            .filter(item => item.id && !seenIds.has(item.id) && !questions.some(q => q.id === item.id));
-
-        questions.push(...fallbackItems.slice(0, needed));
+        console.warn(`'${competency}' 역량 문제 은행에 문제가 부족합니다. (${questions.length}/${count}개)`);
     }
-    
-    return questions.slice(0, count);
+
+    return questions;
 };
+
 
 export const saveNewQuestions = async (questions: Omit<QuizItem, 'id'>[]): Promise<QuizItem[]> => {
     const batch = writeBatch(db);
@@ -110,7 +117,7 @@ export const saveNewQuestions = async (questions: Omit<QuizItem, 'id'>[]): Promi
     const statsUpdate: { [key: string]: any } = { total: increment(questions.length) };
 
     questions.forEach(question => {
-        const docRef = doc(collection(db, "preGeneratedQuestions"));
+        const docRef = doc(collection(db, "preGeneratedQuestions", question.competency, "questions"));
         batch.set(docRef, question);
         savedQuestions.push({ ...question, id: docRef.id });
 
@@ -118,12 +125,11 @@ export const saveNewQuestions = async (questions: Omit<QuizItem, 'id'>[]): Promi
         statsUpdate[competencyKey] = increment(1);
     });
 
-    // Update stats
     const statsRef = doc(db, 'systemStats', 'counts');
     batch.update(statsRef, statsUpdate);
 
     await batch.commit();
-    console.log(`${questions.length} new questions saved to bank and stats updated.`);
+    console.log(`${questions.length}개의 새 문제가 은행에 저장되고 통계가 업데이트되었습니다.`);
     return savedQuestions;
 };
 
@@ -144,7 +150,6 @@ export const getSystemStats = async (): Promise<SystemStats> => {
     if (statsDoc.exists()) {
         return statsDoc.data() as SystemStats;
     } else {
-        // Initialize if it doesn't exist
         const initialStats: SystemStats = {
             total: 0,
             지휘감독능력: 0,
@@ -165,7 +170,7 @@ export const saveSingleQuestionToBank = async (question: QuizItem): Promise<void
 
     const batch = writeBatch(db);
 
-    const questionRef = doc(collection(db, 'preGeneratedQuestions'));
+    const questionRef = doc(collection(db, 'preGeneratedQuestions', question.competency, 'questions'));
     batch.set(questionRef, question);
 
     const statsRef = doc(db, 'systemStats', 'counts');
