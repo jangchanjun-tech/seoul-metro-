@@ -41,8 +41,8 @@ const ScoreTrendChart: React.FC<{ results: QuizResult[] }> = ({ results }) => {
             {chartData.length > 0 ? (
                 <div className="flex justify-start items-end h-48 border-b-2 border-gray-600 pb-2 space-x-2">
                     {chartData.map((result, index) => (
-                        <div key={result.id} className="flex-1 flex flex-col items-center justify-end h-full px-1 group relative max-w-[60px]">
-                            <span className="text-xs text-white mb-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">{result.score}</span>
+                        <div key={result.id} className="flex-1 flex flex-col items-center justify-end h-full px-1 relative max-w-[60px]">
+                            <span className="text-xs text-white mb-1">{result.score}</span>
                             <div 
                                 className="w-full bg-indigo-500 rounded-t-md hover:bg-indigo-400 transition-colors duration-300" 
                                 style={{ height: `${result.score}%` }}
