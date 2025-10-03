@@ -81,15 +81,16 @@ const AdminPanel = ({onGoHome}: {onGoHome: () => void}) => {
                 return;
             }
             
-            const underfilledCompetencies = COMPETENCIES.filter(c => currentStats[c] < 10000);
+            // Self-Balancing Logic: Find the competency with the fewest questions.
+            const sortedCompetencies = [...COMPETENCIES].sort((a, b) => (currentStats[a] || 0) - (currentStats[b] || 0));
+            const targetCompetency = sortedCompetencies[0];
 
-            if (underfilledCompetencies.length === 0) {
+            // If the least-filled competency has reached the target, all have.
+            if ((currentStats[targetCompetency] || 0) >= 10000) {
                 if(workerId === 1) addLog("모든 역량이 10,000개를 달성했습니다. 생성을 중단합니다.");
                 stopGeneration();
                 return;
             }
-            
-            const targetCompetency = underfilledCompetencies[Math.floor(Math.random() * underfilledCompetencies.length)];
             
             try {
                 // FIX: Explicitly convert `targetCompetency` to a string to prevent implicit conversion errors from symbol types.
