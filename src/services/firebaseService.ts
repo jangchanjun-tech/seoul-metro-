@@ -1,4 +1,4 @@
-import { collection, addDoc, serverTimestamp, writeBatch, doc, getDocs, query, where, limit, getDoc, setDoc, updateDoc, increment, runTransaction } from 'firebase/firestore';
+import { collection, doc, getDocs, query, where, getDoc, setDoc, writeBatch, serverTimestamp, increment, runTransaction, limit } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { QuizItem, User, QuizResult, SystemStats, OverallPerformanceStats, AnalysisCache } from "../types";
 
@@ -135,10 +135,8 @@ export const fetchBankQuestions = async (competency: string, count: number, seen
         const snapshot = await getDocs(q);
         const allFetched = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as QuizItem));
         
-        // 사용자가 보지 않은 문제만 필터링
         const unseenQuestions = allFetched.filter(item => item.id && !seenIds.has(item.id));
         
-        // 만약 보지 않은 문제가 있다면, 랜덤하게 섞어서 필요한 만큼 반환
         if (unseenQuestions.length > 0) {
             for (let i = unseenQuestions.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -147,14 +145,20 @@ export const fetchBankQuestions = async (competency: string, count: number, seen
             return unseenQuestions.slice(0, count);
         }
     
-        // 보지 않은 문제가 없다면 빈 배열을 반환하여 100% 실시간 생성 모드로 유도
         return [];
 
     } catch (error) {
         console.error(`'${competency}' 역량의 문제 은행 호출 중 오류:`, error);
-        // 오류 발생 시에도 빈 배열을 반환하여 앱 중단 방지
         return [];
     }
+};
+
+export const fetchInitialBankSet = async (competencies: string[], seenIds: Set<string>): Promise<QuizItem[]> => {
+    const fetchPromises = competencies.map(competency => 
+        fetchBankQuestions(competency, 1, seenIds)
+    );
+    const questionsPerCompetency = await Promise.all(fetchPromises);
+    return questionsPerCompetency.flat();
 };
 
 
@@ -174,7 +178,8 @@ export const saveNewQuestions = async (questions: Omit<QuizItem, 'id'>[]): Promi
     });
 
     const statsRef = doc(db, 'systemStats', 'counts');
-    batch.update(statsRef, statsUpdate);
+    // FIX: Using set with merge option to prevent overwriting if doc doesn't exist
+    batch.set(statsRef, statsUpdate, { merge: true });
 
     await batch.commit();
     console.log(`${questions.length}개의 새 문제가 은행에 저장되고 통계가 업데이트되었습니다.`);
