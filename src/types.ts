@@ -1,6 +1,7 @@
 import { Timestamp } from "firebase/firestore";
 
 export interface QuizItem {
+  id?: string; // Firestore document ID
   passage: string;
   question: string;
   options: string[];
@@ -24,10 +25,19 @@ export interface QuizResult {
   userId: string;
   userName: string;
   topic: string;
-  quizData: QuizItem[];
+  quizData: QuizItem[]; // Keep for simplicity in dashboard, could be replaced by questionIds
   score: number;
   totalQuestions: number;
   createdAt: Timestamp | null;
+}
+
+export interface SystemStats {
+    total: number;
+    지휘감독능력: number;
+    '책임감 및 적극성': number;
+    '관리자로서의 자세 및 청렴도': number;
+    '경영의식 및 혁신성': number;
+    '업무의 이해도 및 상황대응력': number;
 }
 
 
