@@ -38,8 +38,6 @@ export const saveQuizResult = async (user: User, topic: string, quizData: QuizIt
                     else if (item.secondBestAnswers.includes(answer)) totalPoints += 2;
                     else if (item.worstAnswer === answer) totalPoints += 1;
                 });
-                // FIX: This comparison was causing a TypeScript error because `maxPointsPerQuestion` is a constant `6`.
-                // The check is unnecessary as division by zero is not possible here.
                 const questionScore = Math.round((totalPoints / maxPointsPerQuestion) * 100);
 
                 competencyScores[competency].score += questionScore;
@@ -131,7 +129,7 @@ export const fetchBankQuestions = async (competency: string, count: number, seen
     try {
         const q = query(
             collection(db, "preGeneratedQuestions", competency, "questions"),
-            limit(50) // 한 번에 충분한 양을 가져와 클라이언트에서 필터링
+            limit(20) // Optimized: Reduced from 50 to 20 to speed up fetch time.
         );
         
         const snapshot = await getDocs(q);

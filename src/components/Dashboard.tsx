@@ -33,6 +33,35 @@ const calculateScore = (items: any[], answers: Record<number, string[]> | undefi
     return maxTotalPoints === 0 ? 0 : Math.round((totalPoints / maxTotalPoints) * 100);
 };
 
+const ScoreTrendChart: React.FC<{ results: QuizResult[] }> = ({ results }) => {
+    const chartData = [...results].reverse(); // Reverse to show oldest to newest
+
+    return (
+        <div className="bg-gray-900/50 p-4 rounded-lg">
+            {chartData.length > 0 ? (
+                <div className="flex justify-start items-end h-48 border-b-2 border-gray-600 pb-2 space-x-2">
+                    {chartData.map((result, index) => (
+                        <div key={result.id} className="flex-1 flex flex-col items-center justify-end h-full px-1 group relative max-w-[60px]">
+                            <span className="text-xs text-white mb-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">{result.score}</span>
+                            <div 
+                                className="w-full bg-indigo-500 rounded-t-md hover:bg-indigo-400 transition-colors duration-300" 
+                                style={{ height: `${result.score}%` }}
+                                title={`${index + 1}회차: ${result.score}점`}
+                            >
+                            </div>
+                            <p className="text-xs text-gray-400 mt-2 whitespace-nowrap">{index + 1}회차</p>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="h-48 flex items-center justify-center text-gray-500">
+                    2회 이상 응시하면 성적 추이 그래프가 표시됩니다.
+                </div>
+            )}
+        </div>
+    );
+};
+
 
 const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
   const [userResults, setUserResults] = useState<QuizResult[]>([]);
@@ -156,9 +185,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
       return (
           <div className="text-center bg-gray-800/50 p-8 rounded-lg">
               <h2 className="text-2xl font-bold text-indigo-300">데이터가 없습니다</h2>
-              <p className="text-gray-400 mt-2 mb-4">모의고사를 한 번 이상 완료해야 대시보드가 표시됩니다.</p>
+              <p className="text-gray-400 mt-2 mb-4">역량평가를 한 번 이상 완료해야 대시보드가 표시됩니다.</p>
               <button onClick={onGoHome} className="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition-all">
-                  모의고사 풀러 가기
+                  역량평가 하러 가기
               </button>
           </div>
       );
@@ -166,8 +195,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
 
   const Bar = ({ value, color, label }: { value: number; color: string; label: string; }) => (
     <div className="flex flex-col items-center w-2/5">
-        <div className="w-full h-40 bg-gray-700/50 rounded-t-md flex items-end">
+        <div className="w-full h-40 bg-gray-700/50 rounded-t-md flex items-end relative">
             <div className={`${color} w-full rounded-t-md`} style={{ height: `${value}%` }} title={`${label}: ${value}점`}></div>
+            <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-sm font-semibold text-white">{value}</span>
         </div>
         <p className="text-xs text-gray-400 mt-2 text-center">{label}</p>
     </div>
@@ -177,6 +207,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, onGoHome }) => {
     <div className="space-y-8 animate-fade-in">
       <h1 className="text-3xl font-bold text-center text-indigo-300">마이페이지: 성과 분석 리포트</h1>
       
+      <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700">
+        <h2 className="text-xl font-semibold text-white mb-4">성적 추이 분석</h2>
+        <ScoreTrendChart results={userResults} />
+      </div>
+
       <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700">
         <h2 className="text-xl font-semibold text-white mb-4">과목별 성과지수</h2>
          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
