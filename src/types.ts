@@ -1,5 +1,5 @@
-// FIX: Removed reference to "vite/client" to resolve "Cannot find type definition file" error.
-// This reference is now placed in the specific file that requires it (`src/firebase/config.ts`).
+// FIX: The reference to "vite/client" was removed from the project to resolve a "Cannot find type definition file" error.
+// As a workaround, types for `import.meta.env` are defined manually where needed (e.g., in `src/firebase/config.ts`).
 
 import { User as FirebaseUser } from 'firebase/auth';
 

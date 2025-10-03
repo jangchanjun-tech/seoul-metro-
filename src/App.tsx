@@ -317,7 +317,7 @@ const App: React.FC = () => {
             <header className="relative z-20 p-4 sm:p-6 flex justify-between items-center max-w-7xl mx-auto">
                 <div className="flex items-center gap-3 cursor-pointer" onClick={() => { setAppState('home'); setCurrentQuestionIndex(0); }}>
                     <svg className="w-8 h-8 text-indigo-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"></path></svg>
-                    <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">AI 역량평가</h1>
+                    <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">서울교통공사 AI 역량평가</h1>
                 </div>
                 <div className="flex items-center gap-2 sm:gap-4">
                     <button onClick={() => setIsGuideModalOpen(true)} className="text-gray-300 hover:text-white font-medium py-2 px-3 rounded-lg hover:bg-gray-700 transition-all text-sm sm:text-base">이용안내</button>

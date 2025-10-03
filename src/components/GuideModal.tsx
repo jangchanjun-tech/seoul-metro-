@@ -63,7 +63,7 @@ const GuideModal: React.FC<GuideModalProps> = ({ onClose }) => {
           </div>
            <div className="flex items-start">
             <span className="bg-indigo-600 text-white rounded-full w-6 h-6 flex-shrink-0 flex items-center justify-center font-bold mr-3">4</span>
-            <p><strong>성과 관리 (로그인 필수)</strong>: 로그인 시 모든 결과가 자동 저장됩니다. <strong>'마이페이지'</strong>에서 회차별 성적 추이와 전체 응시자 대비 나의 <strong>상위 백분위</strong>를 확인하며 체계적으로 학습을 관리하세요.</p>
+            <p><strong>성과 관리 (로그인 필수)</strong>: 로그인 시 모든 결과가 자동 저장됩니다. <strong>'나의 성과분석'</strong>에서 회차별 성적 추이와 전체 응시자 대비 나의 <strong>상위 백분위</strong>를 확인하며 체계적으로 학습을 관리하세요.</p>
           </div>
         </div>
         <button
