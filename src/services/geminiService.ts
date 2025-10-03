@@ -1,3 +1,5 @@
+// src/services/geminiService.ts
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { QuizItem } from '../types';
 
@@ -72,7 +74,7 @@ export const generateSingleQuiz = async (competency: string): Promise<QuizItem> 
 3.  **문제 형식**:
     *   **지문**: 600자에서 800자 사이의 한글로 된 구체적인 상황을 제시합니다.
     *   **질문**: 지문 마지막에 "이 상황에서 당신이 취할 가장 적절한 행동 2가지를 고르시오." 형식의 질문을 제시합니다.
-    *   **선택지 구성**: 총 5개의 선택지를 제공하며, '최선'(2개), '차선'(2개), '최악'(1개)으로 구성되어야 합니다.
+    *   **선택지 구성**: 총 5개의 선택지를 제공하며, '최선'(2개), '차선'(2개), '최악'(1개)으로 구성되어야 합니다. 특히 **'최악' 선택지는 표면적으로 그럴듯해 보이지만 결정적인 결함이 있는 '매력적인 오답'**이어야 합니다.
 4.  **JSON 출력 조건**:
     *   'options' 필드에는 5개 선택지가 모두 포함된 배열을 제공해야 합니다.
     *   'bestAnswers' 필드에는 2개의 '최선' 선택지를 담은 배열을 제공해야 합니다.
@@ -89,7 +91,7 @@ export const generateSingleQuiz = async (competency: string): Promise<QuizItem> 
                 systemInstruction: systemInstruction,
                 responseMimeType: "application/json",
                 responseSchema: quizItemSchema,
-                temperature: 0.8,
+                temperature: 0.9,
             },
         });
 

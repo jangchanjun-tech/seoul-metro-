@@ -1,3 +1,5 @@
+// src/App.tsx
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { getAIVerification, shuffleArray, generateSingleQuiz } from './services/geminiService';
@@ -26,6 +28,7 @@ const COMPETENCIES: (keyof Omit<SystemStats, 'total'>)[] = ["지휘감독능력"
 // Firebase 콘솔 > Authentication > Users 탭에서 '사용자 UID'를 복사하여 아래 배열의 값을 교체하세요.
 // 예: const ADMIN_UIDS = ['Abc123xyz...'];
 const ADMIN_UIDS = ['GoK2Ltn3G9Rt3JWh1uWZ3y739C93'];
+const CONCURRENT_GENERATIONS = 5; // 병렬 생성 개수
 
 
 const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
@@ -38,9 +41,9 @@ const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
         isGeneratingRef.current = isGenerating;
     }, [isGenerating]);
 
-    const addLog = (message: string) => {
+    const addLog = useCallback((message: string) => {
         setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${message}`, ...prev].slice(0, 100));
-    };
+    }, []);
 
     const fetchStats = useCallback(async () => {
         const currentStats = await getSystemStats();
@@ -50,54 +53,59 @@ const AdminPanel: React.FC<{onGoHome: () => void}> = ({onGoHome}) => {
 
     useEffect(() => {
         fetchStats();
+        const interval = setInterval(fetchStats, 5000); // 5초마다 통계 자동 갱신
+        return () => clearInterval(interval);
     }, [fetchStats]);
 
     const startGeneration = () => {
-        addLog("문제 생성을 시작합니다...");
+        addLog(`${CONCURRENT_GENERATIONS}개의 병렬 프로세스로 문제 생성을 시작합니다...`);
         setIsGenerating(true);
-        isGeneratingRef.current = true; // FIX: Set ref immediately to prevent timing issue
+        isGeneratingRef.current = true;
 
-        const generationLoop = async () => {
+        const generationLoop = async (workerId: number) => {
             if (!isGeneratingRef.current) {
-                addLog("문제 생성을 중단했습니다.");
+                if(workerId === 1) addLog("모든 생성 프로세스를 중단합니다.");
                 return;
             }
 
-            let currentStats = await fetchStats();
+            const currentStats = await getSystemStats(); // Get latest stats inside loop
             if (currentStats.total >= 5000) {
-                addLog("목표 5,000개에 도달하여 생성을 자동 중단합니다.");
+                if(workerId === 1) addLog("목표 5,000개에 도달하여 생성을 자동 중단합니다.");
                 setIsGenerating(false);
                 return;
             }
+            
+            const underfilledCompetencies = COMPETENCIES.filter(c => currentStats[c] < 1000);
 
-            // Find competency with the least questions
-            const competencyCounts = Object.entries(currentStats)
-                .filter(([key]) => key !== 'total')
-                .sort(([, a], [, b]) => a - b);
+            if (underfilledCompetencies.length === 0) {
+                if(workerId === 1) addLog("모든 역량이 1,000개를 달성했습니다. 생성을 중단합니다.");
+                setIsGenerating(false);
+                return;
+            }
             
-            const targetCompetency = competencyCounts[0][0] as keyof Omit<SystemStats, 'total'>;
+            const targetCompetency = underfilledCompetencies[Math.floor(Math.random() * underfilledCompetencies.length)];
             
-            if (currentStats[targetCompetency] >= 1000) {
-                 addLog(`'${targetCompetency}' 역량은 1,000개를 달성했습니다. 다음 역량으로 넘어갑니다.`);
-            } else {
-                try {
-                    addLog(`'${targetCompetency}' 역량 문제 생성 시도...`);
-                    const newQuestion = await generateSingleQuiz(targetCompetency);
-                    await saveSingleQuestionToBank(newQuestion);
-                    addLog(`성공: '${targetCompetency}' 문제 1개가 문제 은행에 저장되었습니다.`);
-                } catch (error) {
-                    addLog(`오류: 문제 생성 실패. ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
-                }
+            try {
+                addLog(`[Worker ${workerId}] '${targetCompetency}' 역량 문제 생성 시도...`);
+                const newQuestion = await generateSingleQuiz(targetCompetency);
+                await saveSingleQuestionToBank(newQuestion);
+                addLog(`[Worker ${workerId}] 성공: '${targetCompetency}' 문제 1개 저장 완료.`);
+            } catch (error) {
+                addLog(`[Worker ${workerId}] 오류: 생성 실패. ${error instanceof Error ? error.message.substring(0, 50) : '알 수 없는 오류'}`);
             }
 
-            setTimeout(generationLoop, 3000); // Wait 3 seconds to avoid rate limiting
+            setTimeout(() => generationLoop(workerId), 1000 * workerId); // Stagger API calls slightly
         };
 
-        generationLoop();
+        // Start multiple generation loops in parallel
+        for (let i = 1; i <= CONCURRENT_GENERATIONS; i++) {
+            generationLoop(i);
+        }
     };
 
     const stopGeneration = () => {
         setIsGenerating(false);
+        isGeneratingRef.current = false;
     };
 
     return (
@@ -199,13 +207,14 @@ const App: React.FC = () => {
         const userId = auth.currentUser.uid;
         const seenIds = await getSeenQuestionIds(userId);
 
-        const questionPromises = COMPETENCIES.map(async (competency) => {
-            const bankQuestions = await fetchBankQuestions(competency, 1, seenIds);
-            const realtimeQuestion = await generateSingleQuiz(competency);
+        const promises = COMPETENCIES.map(async (competency) => {
+            const bankPromise = fetchBankQuestions(competency, 1, seenIds);
+            const realtimePromise = generateSingleQuiz(competency);
+            const [bankQuestions, realtimeQuestion] = await Promise.all([bankPromise, realtimePromise]);
             return { bank: bankQuestions, realtime: realtimeQuestion };
         });
 
-        const results = await Promise.all(questionPromises);
+        const results = await Promise.all(promises);
         
         const bankQuestions = results.flatMap(r => r.bank);
         const newRawQuestions = results.map(r => r.realtime);
@@ -214,6 +223,10 @@ const App: React.FC = () => {
 
         const combined = [...bankQuestions, ...newSavedQuestions];
         const finalQuizSet = shuffleArray(combined).map(q => ({...q, options: shuffleArray(q.options)}));
+        
+        if (finalQuizSet.length < 10) {
+            throw new Error(`문제 생성 중 오류가 발생하여 10개를 모두 불러오지 못했습니다. (총 ${finalQuizSet.length}개)`);
+        }
 
         setQuizData(finalQuizSet);
         
