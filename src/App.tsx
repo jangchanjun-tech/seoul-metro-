@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, isFirebaseInitialized } from './firebase/config';
 import { isGeminiInitialized, generateSingleQuiz, shuffleArray, getAIVerification } from './services/geminiService';
-import { saveQuizResult, getQuestionCountsByCompetency, savePreGeneratedQuestion, ensureUserDocument, incrementUserAttemptCount, fetchRandomPreGeneratedQuestions } from './services/firebaseService';
+import { saveQuizResult, getQuestionCountsByCompetency, savePreGeneratedQuestion, ensureUserDocument, incrementUserAttemptCount, fetchRandomPreGeneratedQuestions, updateSystemStatsAfterQuiz } from './services/firebaseService';
 import { QuizItem, User, QuizResult, AdminStats } from './types';
 
 // Components
@@ -49,6 +49,7 @@ const App: React.FC = () => {
     const [isAdmin, setIsAdmin] = useState(false);
     const [adminStats, setAdminStats] = useState<AdminStats>({});
     const [isAutoGenerating, setIsAutoGenerating] = useState(false);
+    const [isBatchGenerating, setIsBatchGenerating] = useState(false);
     const autoGenIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
 
@@ -220,7 +221,8 @@ const App: React.FC = () => {
                 totalCorrect: correctCount, totalQuestions: quizData.length, elapsedTime,
                 submittedAt: new Date(), competencyScores,
             });
-            await incrementUserAttemptCount(user.uid);
+            const { isFirstAttempt } = await incrementUserAttemptCount(user.uid);
+            await updateSystemStatsAfterQuiz(finalScore, isFirstAttempt);
         }
     }, [quizData, userAnswers, elapsedTime, user, verificationResults]);
 
@@ -244,6 +246,25 @@ const App: React.FC = () => {
         }
     };
     
+    const handleGenerateAllAdmin = async () => {
+        setIsBatchGenerating(true);
+        setError(null);
+        try {
+            const generationPromises = COMPETENCIES.map(async (competency) => {
+                const newItem = await generateSingleQuiz(competency);
+                await savePreGeneratedQuestion(newItem);
+            });
+            await Promise.all(generationPromises);
+            await fetchAdminStats(); // Refresh stats
+            alert('5개 역량의 문제가 모두 성공적으로 생성되어 문제 은행에 저장되었습니다.');
+        } catch (error) {
+            console.error("Admin batch generation failed:", error);
+            setError("AI 문제 일괄 생성에 실패했습니다. 일부 문제가 생성되지 않았을 수 있습니다.");
+        } finally {
+            setIsBatchGenerating(false);
+        }
+    };
+
     const autoGenerateQuestion = useCallback(async () => {
         const currentStats = await getQuestionCountsByCompetency(COMPETENCIES);
         setAdminStats(currentStats);
@@ -324,7 +345,7 @@ const App: React.FC = () => {
                 );
             }
             case 'dashboard': return <Dashboard user={user!} onReview={handleReview} onBack={() => setAppState('home')} />;
-            case 'admin': return <AdminPanel stats={adminStats} isAutoGenerating={isAutoGenerating} onGenerate={handleGenerateSingleAdmin} onToggleAuto={handleToggleAutoGeneration} onBack={() => setAppState('home')} />;
+            case 'admin': return <AdminPanel stats={adminStats} isAutoGenerating={isAutoGenerating} onGenerate={handleGenerateSingleAdmin} onToggleAuto={handleToggleAutoGeneration} onBack={() => setAppState('home')} onGenerateAll={handleGenerateAllAdmin} isBatchGenerating={isBatchGenerating} />;
             case 'review': {
                  if (!reviewResult) return <p>리뷰할 데이터를 찾을 수 없습니다.</p>;
                  const currentQuestion = reviewResult.quizData[currentQuestionIndex];

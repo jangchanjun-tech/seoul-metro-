@@ -4,8 +4,10 @@ import { AdminStats } from '../types';
 interface AdminPanelProps {
   stats: AdminStats;
   isAutoGenerating: boolean;
+  isBatchGenerating: boolean;
   onGenerate: (competency: string) => void;
   onToggleAuto: () => void;
+  onGenerateAll: () => void;
   onBack: () => void;
 }
 
@@ -14,7 +16,7 @@ const COMPETENCIES = [
     '경영의식 및 혁신성', '업무의 이해도 및 상황대응력'
 ];
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ stats, isAutoGenerating, onGenerate, onToggleAuto, onBack }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ stats, isAutoGenerating, isBatchGenerating, onGenerate, onToggleAuto, onGenerateAll, onBack }) => {
   return (
     <div className="w-full max-w-4xl mx-auto space-y-8 animate-fade-in">
       <header className="flex justify-between items-center">
@@ -26,18 +28,27 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ stats, isAutoGenerating, onGene
       </header>
 
       <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-2xl shadow-lg p-6">
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
             <h2 className="text-xl font-bold text-indigo-300">문제 은행 현황</h2>
-            <button 
-                onClick={onToggleAuto}
-                className={`font-bold py-2 px-4 rounded-lg transition-colors ${
-                    isAutoGenerating 
-                    ? 'bg-red-600 hover:bg-red-700 text-white' 
-                    : 'bg-green-600 hover:bg-green-700 text-white'
-                }`}
-            >
-                {isAutoGenerating ? '자동 생성 중지' : '자동 생성 시작'}
-            </button>
+            <div className="flex items-center gap-2">
+                <button 
+                    onClick={onGenerateAll}
+                    disabled={isBatchGenerating || isAutoGenerating}
+                    className="font-bold py-2 px-4 rounded-lg transition-colors bg-purple-600 hover:bg-purple-700 text-white disabled:bg-gray-600 disabled:cursor-not-allowed"
+                >
+                    {isBatchGenerating ? '일괄 생성 중...' : '5과목 전체 생성 (+5)'}
+                </button>
+                <button 
+                    onClick={onToggleAuto}
+                    className={`font-bold py-2 px-4 rounded-lg transition-colors ${
+                        isAutoGenerating 
+                        ? 'bg-red-600 hover:bg-red-700 text-white' 
+                        : 'bg-green-600 hover:bg-green-700 text-white'
+                    }`}
+                >
+                    {isAutoGenerating ? '자동 생성 중지' : '자동 생성 시작'}
+                </button>
+            </div>
         </div>
         <div className="space-y-3">
           {COMPETENCIES.map(comp => (

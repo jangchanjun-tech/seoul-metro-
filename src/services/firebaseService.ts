@@ -1,5 +1,5 @@
 import { db } from '../firebase/config';
-import { QuizResult, SystemStats, QuizItem, AdminStats } from '../types';
+import { QuizResult, SystemStats, QuizItem, AdminStats, CachedAnalysis } from '../types';
 import { 
   collection, 
   addDoc, 
@@ -13,7 +13,8 @@ import {
   setDoc,
   getDoc,
   increment,
-  updateDoc
+  updateDoc,
+  runTransaction
 } from 'firebase/firestore';
 
 // User Management
@@ -24,20 +25,31 @@ export const ensureUserDocument = async (uid: string, userData: { email: string 
     if (!userSnap.exists()) {
         await setDoc(userRef, {
             ...userData,
-            createdAt: serverTimestamp(),
+            createdAt: Timestamp.now(),
             attemptCount: 0,
         });
     }
 };
 
-export const incrementUserAttemptCount = async (uid: string) => {
-    if (!db) return;
+export const incrementUserAttemptCount = async (uid: string): Promise<{ isFirstAttempt: boolean }> => {
+    if (!db) return { isFirstAttempt: false };
     const userRef = doc(db, 'users', uid);
-    await updateDoc(userRef, {
-        attemptCount: increment(1)
-    });
+    try {
+        const userSnap = await getDoc(userRef);
+        const currentAttempts = userSnap.data()?.attemptCount || 0;
+        
+        await updateDoc(userRef, {
+            attemptCount: increment(1)
+        });
+        
+        return { isFirstAttempt: currentAttempts === 0 };
+    } catch (error) {
+        console.error("Error incrementing user attempt count:", error);
+        // Fallback to ensure quiz flow continues
+        await updateDoc(userRef, { attemptCount: increment(1) });
+        return { isFirstAttempt: false };
+    }
 };
-
 
 // Quiz Results
 export const saveQuizResult = async (result: Omit<QuizResult, 'id'>): Promise<string> => {
@@ -86,44 +98,88 @@ export const getUserQuizResults = async (userId: string): Promise<QuizResult[]> 
     return results;
 };
 
-
 // System & Admin
-export const getSystemStats = async (userId: string): Promise<SystemStats> => {
+export const getSystemStatsSummary = async (): Promise<SystemStats> => {
     if (!db) return { totalParticipants: 0, averageScore: 0 };
-
-    let totalScore = 0;
-    const userIds = new Set<string>();
-    let userLatestScore: number | null = null;
-    let allScores: number[] = [];
-
     try {
-        const q = query(collection(db, "quizResults"));
-        const querySnapshot = await getDocs(q);
-        
-        if (querySnapshot.empty) return { totalParticipants: 0, averageScore: 0 };
+        const statsRef = doc(db, 'system_stats', 'summary');
+        const statsSnap = await getDoc(statsRef);
 
-        const userLatestSnapshot = await getDocs(query(collection(db, "quizResults"), where("userId", "==", userId), orderBy("submittedAt", "desc"), limit(1)));
-        if(!userLatestSnapshot.empty) userLatestScore = userLatestSnapshot.docs[0].data().score;
-
-        querySnapshot.forEach((doc) => {
-            const data = doc.data();
-            totalScore += data.score;
-            userIds.add(data.userId);
-            allScores.push(data.score);
-        });
-
-        const averageScore = Math.round(totalScore / querySnapshot.size);
-        const stats: SystemStats = { totalParticipants: userIds.size, averageScore };
-
-        if (userLatestScore !== null) {
-            stats.percentile = Math.round((allScores.filter(score => score < userLatestScore!).length / allScores.length) * 100);
+        if (!statsSnap.exists()) {
+            return { totalParticipants: 0, averageScore: 0 };
         }
-        return stats;
+        
+        const statsData = statsSnap.data();
+        const totalScore = statsData.totalScoreSum || 0;
+        const totalQuizzes = statsData.totalQuizCount || 0;
+        
+        return {
+            totalParticipants: statsData.totalParticipants || 0,
+            averageScore: totalQuizzes > 0 ? Math.round(totalScore / totalQuizzes) : 0,
+        };
+
     } catch (error) {
-        console.error("Error fetching system stats:", error);
+        console.error("Error fetching system stats summary:", error);
         return { totalParticipants: 0, averageScore: 0 };
     }
+}
+
+export const updateSystemStatsAfterQuiz = async (newScore: number, isFirstAttempt: boolean) => {
+    if (!db) return;
+    const statsRef = doc(db, 'system_stats', 'summary');
+    try {
+        await runTransaction(db, async (transaction) => {
+            const statsDoc = await transaction.get(statsRef);
+            if (!statsDoc.exists()) {
+                transaction.set(statsRef, {
+                    totalScoreSum: newScore,
+                    totalQuizCount: 1,
+                    totalParticipants: 1
+                });
+            } else {
+                transaction.update(statsRef, {
+                    totalScoreSum: increment(newScore),
+                    totalQuizCount: increment(1),
+                    totalParticipants: isFirstAttempt ? increment(1) : increment(0)
+                });
+            }
+        });
+    } catch (e) {
+        console.error("Stats update transaction failed: ", e);
+    }
 };
+
+export const getCachedAnalysis = async (uid: string): Promise<CachedAnalysis | null> => {
+    if (!db) return null;
+    const analysisRef = doc(db, 'users', uid, 'analysis', 'latest');
+    try {
+        const docSnap = await getDoc(analysisRef);
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            return {
+                ...data,
+                generatedAt: (data.generatedAt as Timestamp).toDate(),
+            } as CachedAnalysis;
+        }
+    } catch (error) {
+         console.error("Error fetching cached analysis:", error);
+    }
+    return null;
+}
+
+export const saveCachedAnalysis = async (uid: string, analysisData: Omit<CachedAnalysis, 'generatedAt' | 'id'>) => {
+    if (!db) return;
+    const analysisRef = doc(db, 'users', uid, 'analysis', 'latest');
+    try {
+        await setDoc(analysisRef, {
+            ...analysisData,
+            generatedAt: Timestamp.now()
+        });
+    } catch (error) {
+         console.error("Error saving cached analysis:", error);
+    }
+}
+
 
 export const getQuestionCountsByCompetency = async (competencies: string[]): Promise<AdminStats> => {
     if (!db) return {};
@@ -149,15 +205,12 @@ export const savePreGeneratedQuestion = async (quizItem: QuizItem): Promise<void
     try {
         const collectionPath = `preGeneratedQuestions/${quizItem.competency}/questions`;
         const docRef = doc(db, collectionPath, quizItem.id);
-        await setDoc(docRef, { ...quizItem, createdAt: serverTimestamp() });
+        await setDoc(docRef, { ...quizItem, createdAt: Timestamp.now() });
     } catch (error) {
         console.error("Error saving pre-generated question:", error);
         throw error;
     }
 };
-
-// Firestore server timestamp
-const serverTimestamp = () => Timestamp.now();
 
 // Utility to shuffle an array (Fisher-Yates shuffle)
 const shuffleArray = <T>(array: T[]): T[] => {

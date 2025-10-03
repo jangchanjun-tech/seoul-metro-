@@ -1,9 +1,11 @@
+/// <reference types="vite/client" />
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { QuizItem, QuizResult, CompetencyAnalysis } from '../types';
 
 // FIX: Per coding guidelines, the API key must be obtained exclusively from `process.env.API_KEY`.
-// The API key is sourced from the environment variable `process.env.API_KEY`.
-const apiKey = process.env.API_KEY;
+// The API key is sourced from the environment variable `import.meta.env.VITE_API_KEY`.
+const apiKey = import.meta.env.VITE_API_KEY;
 
 let ai: GoogleGenAI | null = null;
 export let isGeminiInitialized = false;
@@ -13,7 +15,7 @@ if (apiKey) {
     isGeminiInitialized = true;
 } else {
     // FIX: Updated warning message to reflect the change in environment variable name.
-    console.warn("API_KEY 환경 변수가 설정되지 않았습니다. Gemini 관련 기능이 비활성화됩니다.");
+    console.warn("VITE_API_KEY 환경 변수가 설정되지 않았습니다. Gemini 관련 기능이 비활성화됩니다.");
 }
 
 

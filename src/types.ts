@@ -36,10 +36,18 @@ export interface CompetencyAnalysis {
   [key: string]: string;
 }
 
+// Represents the cached analysis for a user
+export interface CachedAnalysis {
+    analysis: CompetencyAnalysis;
+    generatedAt: Date;
+    basedOnResultsCount: number;
+}
+
+
+// Updated SystemStats for scalability
 export interface SystemStats {
   totalParticipants: number;
   averageScore: number;
-  percentile?: number;
 }
 
 // For Admin Panel
