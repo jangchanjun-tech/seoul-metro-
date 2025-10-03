@@ -489,10 +489,10 @@ const App: React.FC = () => {
         <header className="flex justify-between items-center mb-8">
             <div className="text-left cursor-pointer" onClick={() => user && appState === 'home' ? undefined : handleGoHome()}>
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">
-                    서울교통공사 AI 모의고사
+                    서울교통공사 3급 역량 평가 대비
                 </h1>
                 <p className="text-md text-gray-300 hidden sm:block">
-                    실전과 같은 10가지 상황판단문제로 역량을 진단하세요.
+                    5과목의 상황판단 문제 AI로 역량을 진단하세요.
                 </p>
             </div>
             <div className="flex items-center gap-2 sm:gap-4">

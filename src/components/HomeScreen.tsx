@@ -53,7 +53,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ onStartQuiz, isLoading }) => {
                 AI 역량평가 모의고사
             </h2>
             <p className="text-gray-300 max-w-2xl mx-auto">
-                서울교통공사 3급 승진 시험을 완벽 대비하세요. AI가 실제 시험과 유사한 10개의 상황판단문제를 생성하여 당신의 핵심 역량을 종합적으로 진단합니다.
+                서울교통공사 3급 승진 시험을 완벽 대비하세요. AI가 실제 시험과 유사한 상황판단문제를 생성하여 당신의 5가지 핵심 역량을 종합적으로 진단합니다.
             </p>
         </div>
 
